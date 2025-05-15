@@ -37,7 +37,7 @@ app.post("/fetch-email", (req, res) => {
     res.status(500).json({ error: "Failed to fetch email" });
   }
 });
-
+app.get("/ram-usage", getDiskUsage.getRamUsage);
 app.get("/disk-usage", getDiskUsage.getDiskUsage);
 app.get("/fetch-email", FetchEmail);
 
