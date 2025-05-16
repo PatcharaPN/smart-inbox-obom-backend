@@ -6,6 +6,10 @@ const EmailSchema = new mongoose.Schema(
     subject: { type: String },
     text: { type: String },
     date: { type: Date },
+    to: { type: String },
+    cc: { type: String },
+    bcc: { type: String },
+    size: { type: String },
     attachments: [
       {
         filename: String,

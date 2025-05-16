@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 
 exports.register = async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body;
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -18,6 +18,7 @@ exports.register = async (req, res) => {
     const newUser = new User({
       username,
       email,
+      role,
       password: hashedPassword,
     });
     await newUser.save();
@@ -37,6 +38,7 @@ exports.register = async (req, res) => {
       status: "success",
       message: "User registered successfully",
       data: {
+        role: userData.role,
         user: userData,
         token,
       },
@@ -83,6 +85,7 @@ exports.login = async (req, res) => {
       status: "success",
       message: "User logged in successfully",
       data: {
+        role: userData.role,
         user: userData,
         token,
       },
