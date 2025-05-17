@@ -11,7 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
-
+# Ignore the attachments folder inside src
+src/attachments/
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

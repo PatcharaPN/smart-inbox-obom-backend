@@ -31,140 +31,174 @@ const emailService = () => {
   }
 
   imap.once("ready", function () {
-    openInbox(function (err, box) {
+    openInbox(async function (err, box) {
       if (err) throw err;
 
-      imap.search(["ALL"], function (err, results) {
-        if (err || !results || results.length === 0) {
-          console.log("📭 No emails found.");
-          return imap.end();
-        }
-        {
-          /* const latest = results[results.length - 1]; */
-        }
-        const latest = results.slice(-10);
+      imap.search(
+        [
+          ["SINCE", "1-Jan-2024"],
+          ["BEFORE", "1-Jan-2025"],
+        ],
+        async function (err, results) {
+          if (err || !results || results.length === 0) {
+            console.log("📭 No emails found.");
+            return imap.end();
+          }
 
-        const f = imap.fetch(latest, { bodies: "", struct: true });
+          const latest = results.slice(-1000);
+          const batchSize = 100;
 
-        const formatSize = (bytes) => {
-          if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(2) + " GB";
-          if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(2) + " MB";
-          if (bytes >= 1024) return (bytes / 1024).toFixed(2) + " KB";
-          return bytes + " bytes";
-        };
+          for (let i = 0; i < latest.length; i += batchSize) {
+            const batch = latest.slice(i, i + batchSize);
 
-        f.on("message", function (msg) {
-          let emailSize = 0;
-          let rawEmailBuffer = [];
+            console.log(
+              `📦 Fetching batch ${i / batchSize + 1} of ${Math.ceil(
+                latest.length / batchSize
+              )}`
+            );
 
-          msg.on("attributes", function (attrs) {
-            if (attrs.size) {
-              emailSize = attrs.size;
-              console.log(`📏 Email Size from attributes: ${emailSize} bytes`);
-            }
-          });
+            const f = imap.fetch(batch, { bodies: "", struct: true });
 
-          msg.on("body", function (stream) {
-            stream.on("data", (chunk) => rawEmailBuffer.push(chunk));
-            stream.on("end", async () => {
-              const fullBuffer = Buffer.concat(rawEmailBuffer);
-              if (!emailSize) {
-                emailSize = formatSize(fullBuffer.length);
-                console.log(
-                  `📏 Email Size calculated from buffer: ${emailSize} bytes`
-                );
-              }
+            await new Promise((resolve, reject) => {
+              f.on("message", function (msg) {
+                let rawEmailBuffer = [];
+                let emailSize;
 
-              try {
-                const parsed = await simpleParser(fullBuffer);
-                const trimmedReciever = parsed.to?.text.match(/<([^>]+)>/);
-                const reciever = trimmedReciever
-                  ? trimmedReciever[1]
-                  : parsed.to?.text || "";
+                msg.on("body", function (stream) {
+                  stream.on("data", (chunk) => rawEmailBuffer.push(chunk));
+                  stream.on("end", async () => {
+                    const fullBuffer = Buffer.concat(rawEmailBuffer);
+                    if (!emailSize) {
+                      emailSize = `${fullBuffer.length} bytes`;
+                      console.log(`📏 Email Size: ${emailSize}`);
+                    }
 
-                const trimmedEmail = parsed.from?.text.match(/<([^>]+)>/);
-                const email = trimmedEmail
-                  ? trimmedEmail[1]
-                  : parsed.from?.text || "";
+                    try {
+                      const parsed = await simpleParser(fullBuffer);
+                      const trimmedReceiver =
+                        parsed.to?.text.match(/<([^>]+)>/);
+                      const receiver = trimmedReceiver
+                        ? trimmedReceiver[1]
+                        : parsed.to?.text || "";
 
-                console.log("📨 Latest Email:");
-                console.log("From:", parsed.from.text);
-                console.log("Subject:", parsed.subject);
-                console.log("Text:", parsed.text);
+                      const trimmedEmail = parsed.from?.text.match(/<([^>]+)>/);
+                      const email = trimmedEmail
+                        ? trimmedEmail[1]
+                        : parsed.from?.text || "";
 
-                const emailData = {
-                  from: email || "",
-                  to: reciever || "",
-                  cc: parsed.cc?.text || "",
-                  bcc: parsed.bcc?.text || "",
-                  subject: parsed.subject,
-                  text: parsed.text,
-                  date: parsed.date,
-                  size: emailSize,
-                  attachments: parsed.attachments.map((att) => ({
-                    filename: att.filename,
-                    contentType: att.contentType,
-                    contentDisposition: att.contentDisposition,
-                    content: att.content.toString("base64"),
-                  })),
-                };
+                      console.log("📨 Email:", parsed.subject);
 
-                // Save to MongoDB
-                const savedEmail = await EmailModel.create(emailData);
-                console.log("✅ Email saved to MongoDB:", savedEmail._id);
+                      const emailData = {
+                        from: email,
+                        to: receiver,
+                        cc: parsed.cc?.text || "",
+                        bcc: parsed.bcc?.text || "",
+                        subject: parsed.subject,
+                        text: parsed.text,
+                        date: parsed.date,
+                        size: emailSize,
+                        attachments: parsed.attachments.map((att) => {
+                          const filename = att.filename || "unknown";
+                          const emailDate = new Date(parsed.date);
+                          const folderName = `${emailDate.getFullYear()}-${String(
+                            emailDate.getMonth() + 1
+                          ).padStart(2, "0")}-${String(
+                            emailDate.getDate()
+                          ).padStart(2, "0")}`;
 
-                // Save attachments to disk
-                if (parsed.attachments.length > 0) {
-                  const emailDate = new Date(parsed.date);
-                  const folderName = `${emailDate.getFullYear()}-${(
-                    emailDate.getMonth() + 1
-                  )
-                    .toString()
-                    .padStart(2, "0")}-${emailDate
-                    .getDate()
-                    .toString()
-                    .padStart(2, "0")}`;
+                          const subfolder = filename.includes("messageImage")
+                            ? "footer"
+                            : filename.toLowerCase().endsWith(".pdf")
+                            ? "pdf"
+                            : "";
 
-                  const emailAttachmentsDir = path.join(
-                    attachmentsDir,
-                    folderName
-                  );
-                  const footerAttachmentsDir = path.join(
-                    emailAttachmentsDir,
-                    "footer"
-                  );
+                          const filePath = path
+                            .join(folderName, subfolder, filename)
+                            .replace(/\\/g, "/");
+                          return {
+                            filename,
+                            contentType: att.contentType,
+                            contentDisposition: att.contentDisposition,
+                            url: filePath,
+                          };
+                        }),
+                      };
 
-                  fs.mkdirSync(emailAttachmentsDir, { recursive: true });
-                  fs.mkdirSync(footerAttachmentsDir, { recursive: true });
+                      const savedEmail = await EmailModel.create(emailData);
+                      console.log("✅ Saved to MongoDB:", savedEmail._id);
 
-                  parsed.attachments.forEach((attachment) => {
-                    const targetDir = attachment.filename.includes(
-                      "messageImage"
-                    )
-                      ? footerAttachmentsDir
-                      : emailAttachmentsDir;
+                      // Save attachments
+                      if (parsed.attachments.length > 0) {
+                        const emailDate = new Date(parsed.date);
+                        const folderName = `${emailDate.getFullYear()}-${String(
+                          emailDate.getMonth() + 1
+                        ).padStart(2, "0")}-${String(
+                          emailDate.getDate()
+                        ).padStart(2, "0")}`;
 
-                    const filePath = path.join(targetDir, attachment.filename);
-                    fs.writeFile(filePath, attachment.content, (err) => {
-                      if (err) {
-                        console.error("❌ Error saving attachment:", err);
-                      } else {
-                        console.log(`✅ Attachment saved at ${filePath}`);
+                        const emailAttachmentsDir = path.join(
+                          attachmentsDir,
+                          folderName
+                        );
+                        const footerAttachmentsDir = path.join(
+                          emailAttachmentsDir,
+                          "footer"
+                        );
+                        const pdfAttachmentsDir = path.join(
+                          emailAttachmentsDir,
+                          "pdf"
+                        );
+                        fs.mkdirSync(emailAttachmentsDir, { recursive: true });
+                        fs.mkdirSync(footerAttachmentsDir, { recursive: true });
+                        fs.mkdirSync(pdfAttachmentsDir, { recursive: true });
+
+                        parsed.attachments.forEach((attachment) => {
+                          let targetDir;
+                          if (attachment.filename.includes("messageImage")) {
+                            targetDir = footerAttachmentsDir;
+                          } else if (
+                            attachment.filename.toLowerCase().endsWith(".pdf")
+                          ) {
+                            targetDir = pdfAttachmentsDir;
+                          } else {
+                            targetDir = emailAttachmentsDir;
+                          }
+
+                          const filePath = path.join(
+                            targetDir,
+                            attachment.filename
+                          );
+                          fs.writeFile(filePath, attachment.content, (err) => {
+                            if (err) {
+                              console.error("❌ Attachment save error:", err);
+                            } else {
+                              console.log(`✅ Saved attachment at ${filePath}`);
+                            }
+                          });
+                        });
                       }
-                    });
+                    } catch (err) {
+                      console.error("❌ Parsing error:", err);
+                    }
                   });
-                }
-              } catch (err) {
-                console.error("❌ Error parsing or saving email:", err);
-              }
-            });
-          });
-        });
+                });
+              });
 
-        f.once("end", function () {
+              f.once("end", () => {
+                console.log(`✅ Batch ${i / batchSize + 1} completed.`);
+                resolve();
+              });
+
+              f.once("error", (err) => {
+                console.error("❌ Fetch error:", err);
+                reject(err);
+              });
+            });
+          }
+
           imap.end();
-        });
-      });
+        }
+      );
     });
   });
 

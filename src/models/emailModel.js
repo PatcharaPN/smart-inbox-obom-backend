@@ -16,6 +16,7 @@ const EmailSchema = new mongoose.Schema(
         contentType: String,
         contentDisposition: String,
         content: String,
+        url: String,
       },
     ],
   },

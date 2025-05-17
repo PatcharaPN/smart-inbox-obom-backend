@@ -3,6 +3,7 @@ const emailService = require("./src/services/emailService"); // โมเดล�
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const app = express();
+const path = require("path");
 const cors = require("cors");
 const PORT = 3000;
 const dotenv = require("dotenv");
@@ -21,6 +22,11 @@ app.get("/", (req, res) => {
 });
 
 dotenv.config();
+
+app.use(
+  "/attachments",
+  express.static(path.join(__dirname, "src", "attachments"))
+);
 app.use(
   cors({
     origin: "*",
