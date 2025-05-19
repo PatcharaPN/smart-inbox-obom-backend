@@ -36,15 +36,14 @@ const emailService = () => {
 
       imap.search(
         [
-          ["SINCE", "1-Jan-2024"],
-          ["BEFORE", "1-Jan-2025"],
+          ["SINCE", "30-May-2024"],
+          ["BEFORE", "31-May-2024"],
         ],
         async function (err, results) {
           if (err || !results || results.length === 0) {
             console.log("📭 No emails found.");
             return imap.end();
           }
-
           const latest = results.slice(-1000);
           const batchSize = 100;
 
@@ -68,11 +67,7 @@ const emailService = () => {
                   stream.on("data", (chunk) => rawEmailBuffer.push(chunk));
                   stream.on("end", async () => {
                     const fullBuffer = Buffer.concat(rawEmailBuffer);
-                    if (!emailSize) {
-                      emailSize = `${fullBuffer.length} bytes`;
-                      console.log(`📏 Email Size: ${emailSize}`);
-                    }
-
+                    emailSize = fullBuffer.length;
                     try {
                       const parsed = await simpleParser(fullBuffer);
                       const trimmedReceiver =
@@ -80,7 +75,7 @@ const emailService = () => {
                       const receiver = trimmedReceiver
                         ? trimmedReceiver[1]
                         : parsed.to?.text || "";
-
+                      const messageId = parsed.messageId || "";
                       const trimmedEmail = parsed.from?.text.match(/<([^>]+)>/);
                       const email = trimmedEmail
                         ? trimmedEmail[1]
@@ -89,6 +84,7 @@ const emailService = () => {
                       console.log("📨 Email:", parsed.subject);
 
                       const emailData = {
+                        messageId,
                         from: email,
                         to: receiver,
                         cc: parsed.cc?.text || "",
@@ -123,7 +119,18 @@ const emailService = () => {
                           };
                         }),
                       };
+                      if (!messageId) {
+                        console.warn("⚠️ Email has no messageId, skipping.");
+                        return;
+                      }
 
+                      const exists = await EmailModel.findOne({ messageId });
+                      if (exists) {
+                        console.log(
+                          `⚠️ Duplicate messageId, skipping: ${messageId}`
+                        );
+                        return;
+                      }
                       const savedEmail = await EmailModel.create(emailData);
                       console.log("✅ Saved to MongoDB:", savedEmail._id);
 
@@ -197,6 +204,7 @@ const emailService = () => {
           }
 
           imap.end();
+          console.log(`Ended..`);
         }
       );
     });
