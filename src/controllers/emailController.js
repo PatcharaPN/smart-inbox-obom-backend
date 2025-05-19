@@ -1,5 +1,6 @@
+const EmailModel = require("../models/emailModel");
 const Email = require("../models/emailModel");
-exports.FetchEmail = async (req, res) => {
+exports.FetchEmails = async (req, res) => {
   try {
     const emails = await Email.find();
 
@@ -23,5 +24,56 @@ exports.FetchEmail = async (req, res) => {
       message: "Failed to retrieve emails",
       error: error.message,
     });
+  }
+};
+
+exports.FetchEmail = async (req, res) => {
+  const search = req.query.search;
+  const selectedYear = req.query.year;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 5;
+  const skip = (page - 1) * limit;
+
+  try {
+    const filter = {};
+    if (selectedYear && selectedYear !== "all") {
+      const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+      const endOfYear = new Date(
+        `${parseInt(selectedYear) + 1}-01-01T00:00:00.000Z`
+      );
+      filter.date = { $gte: startOfYear, $lt: endOfYear };
+    }
+
+    if (search && search.trim() !== "") {
+      const searchRegEX = new RegExp(search.trim(), "i");
+      filter.$or = [
+        { subject: searchRegEX },
+        { text: searchRegEX },
+        { from: searchRegEX },
+      ];
+    }
+    const emails = await Email.find(filter)
+      .sort({ date: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Email.countDocuments(filter);
+
+    const year = await Email.aggregate([
+      { $project: { year: { $year: "$date" } } },
+      { $group: { _id: "$year" } },
+      { $sort: { _id: -1 } },
+    ]);
+
+    res.json({
+      data: emails,
+      page,
+      totalPage: Math.ceil(total / limit),
+      total,
+      year,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Fail to fetch email from server" });
   }
 };

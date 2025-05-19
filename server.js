@@ -7,7 +7,10 @@ const path = require("path");
 const cors = require("cors");
 const PORT = 3000;
 const dotenv = require("dotenv");
-const { FetchEmail } = require("./src/controllers/emailController");
+const {
+  FetchEmails,
+  FetchEmail,
+} = require("./src/controllers/emailController");
 app.use(express.json());
 app.use(
   cors({
@@ -45,7 +48,8 @@ app.post("/fetch-email", (req, res) => {
 });
 app.get("/ram-usage", getDiskUsage.getRamUsage);
 app.get("/disk-usage", getDiskUsage.getDiskUsage);
-app.get("/fetch-email", FetchEmail);
+app.get("/emails", FetchEmail);
+app.get("/fetch-emails", FetchEmails);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
