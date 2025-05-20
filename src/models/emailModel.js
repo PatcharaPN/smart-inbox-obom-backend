@@ -10,6 +10,7 @@ const EmailSchema = new mongoose.Schema(
     to: { type: String },
     cc: { type: String },
     bcc: { type: String },
+    html: { type: String },
     size: { type: String },
     attachments: [
       {

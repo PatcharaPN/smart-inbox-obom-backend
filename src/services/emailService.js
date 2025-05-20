@@ -82,6 +82,14 @@ const emailService = () => {
                         : parsed.from?.text || "";
 
                       console.log("📨 Email:", parsed.subject);
+                      if (parsed.html) {
+                        const htmlFilePath = path.join(
+                          attachmentsDir,
+                          "email.html"
+                        );
+                        fs.writeFileSync(htmlFilePath, parsed.html);
+                        console.log(`✅ Saved HTML email to ${htmlFilePath}`);
+                      }
 
                       const emailData = {
                         messageId,
@@ -90,6 +98,7 @@ const emailService = () => {
                         cc: parsed.cc?.text || "",
                         bcc: parsed.bcc?.text || "",
                         subject: parsed.subject,
+                        html: parsed.html,
                         text: parsed.text,
                         date: parsed.date,
                         size: emailSize,
