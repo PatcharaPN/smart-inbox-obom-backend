@@ -29,6 +29,7 @@ exports.FetchEmails = async (req, res) => {
 
 exports.FetchEmail = async (req, res) => {
   const search = req.query.search;
+  const folder = req.query.folder;
   const selectedYear = req.query.year;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 5;
@@ -43,7 +44,9 @@ exports.FetchEmail = async (req, res) => {
       );
       filter.date = { $gte: startOfYear, $lt: endOfYear };
     }
-
+    if (folder && folder !== "all") {
+      filter.folder = folder;
+    }
     if (search && search.trim() !== "") {
       const searchRegEX = new RegExp(search.trim(), "i");
       filter.$or = [

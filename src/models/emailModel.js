@@ -12,6 +12,7 @@ const EmailSchema = new mongoose.Schema(
     bcc: { type: String },
     html: { type: String },
     size: { type: String },
+    folder:{type:String},
     attachments: [
       {
         filename: String,

@@ -13,6 +13,7 @@ dist-ssr
 *.local
 # Ignore the attachments folder inside src
 src/attachments/
+attachments
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
