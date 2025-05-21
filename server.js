@@ -3,6 +3,7 @@ const multer = require("multer");
 const emailService = require("./src/services/emailService"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const getDiskUsage = require("./src/controllers/diskUsageController");
+const getInbox = require("./src/services/checkMail");
 const app = express();
 const fs = require("fs");
 const path = require("path");
@@ -23,6 +24,8 @@ app.use(
 );
 require("./src/configs/swagger")(app);
 const uploadPath = path.join(__dirname, "uploads");
+
+const baseUploadPath = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath);
@@ -106,17 +109,47 @@ app.get("/fetch-emails", FetchEmails);
  *         description: A list of Emails
  */
 app.get("/list", (req, res) => {
-  fs.readdir(uploadPath, { withFileTypes: true }, (err, entries) => {
-    if (err) return res.status(500).send("Error reading folder");
+  const { dirPath } = req.query; // ใช้ชื่อพารามิเตอร์ใหม่
 
-    const list = entries.map((entry) => ({
-      name: entry.name,
-      type: entry.isDirectory() ? "folder" : "file",
+  console.log("Received path:", dirPath); // ตรวจสอบว่าค่า path ที่ได้รับถูกต้องหรือไม่
+
+  if (!dirPath) {
+    return res.status(400).json({ error: "Directory path is required" });
+  }
+
+  const fullPath = path.join(baseUploadPath, dirPath); // ใช้ dirPath แทน path
+  console.log("Full path:", fullPath);
+
+  // ตรวจสอบว่าโฟลเดอร์นี้มีอยู่จริงหรือไม่
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ error: "Directory not found" });
+  }
+
+  // อ่านไฟล์และส่งข้อมูลกลับ
+  fs.readdir(fullPath, (err, files) => {
+    if (err) {
+      console.error("Error reading directory:", err);
+      return res.status(500).json({ error: "Failed to read directory" });
+    }
+
+    const entries = files.map((file) => ({
+      name: file,
+      type: fs.statSync(path.join(fullPath, file)).isDirectory()
+        ? "folder"
+        : "file",
+      path: path.join(dirPath, file), // สร้างเส้นทาง relative
     }));
 
-    res.json(list);
+    res.json(entries);
   });
 });
+
+app.get("/file", (req, res) => {
+  const filePath = req.query.path;
+  const fullFilePath = path.join(baseUploadPath, filePath);
+  res.sendFile(fullFilePath);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });

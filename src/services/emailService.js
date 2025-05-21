@@ -13,7 +13,7 @@ if (!fs.existsSync(attachmentsDir)) {
   console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
 }
 
-const foldersToFetch = ["INBOX", "Sent", "Trash"];
+const foldersToFetch = ["Archive.2022"];
 
 const emailService = () => {
   const imap = new Imap({
@@ -22,6 +22,7 @@ const emailService = () => {
     host: "asia.hostneverdie.com",
     port: 993,
     tls: true,
+    timeout: 30000,
     tlsOptions: { rejectUnauthorized: false },
   });
 
@@ -37,10 +38,11 @@ const emailService = () => {
           }
 
           imap.search(
-            [
-              ["SINCE", "1-May-2025"],
-              ["BEFORE", "21-May-2025"],
-            ],
+            ["ALL"],
+            // [
+            //   ["SINCE", "1-Jan-2021"],
+            //   ["BEFORE", "31-Jan-2021"],
+            // ],
             async function (err, results) {
               if (err || !results || results.length === 0) {
                 console.log(`📭 No emails in ${folder}`);
@@ -99,7 +101,7 @@ const emailService = () => {
 
                           const emailData = {
                             messageId,
-                            folder, // 👈 บันทึกชื่อโฟลเดอร์ไว้
+                            folder,
                             from: email,
                             to: receiver,
                             cc: parsed.cc?.text || "",
