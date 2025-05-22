@@ -13,9 +13,37 @@ if (!fs.existsSync(attachmentsDir)) {
   console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
 }
 
+// ระบุโฟลเดอร์ที่จะดึงอีเมล
 const foldersToFetch = ["INBOX", "Sent", "Trash"];
 
-const emailService = () => {
+const fetchNewEmails = () => {
+  const today = new Date();
+
+  // กำหนดวันที่ที่จะดึงอีเมล (วันนี้)
+  const since = new Date(today);
+  since.setDate(today.getDate() - 1); // ตั้งให้ 'SINCE' เป็นวันเมื่อวาน
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const before = tomorrow
+    .toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+    .replace(/ /g, "-");
+
+  const sinceFormatted = since
+    .toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+    .replace(/ /g, "-");
+
+  console.log(`Fetching emails from: ${sinceFormatted} to ${before}`);
+
   const imap = new Imap({
     user: "salessupport@obomgauge.com",
     password: "yzkH#x!yJ3",
@@ -27,6 +55,7 @@ const emailService = () => {
   });
 
   imap.once("ready", async function () {
+    // ดึงข้อมูลจากแต่ละโฟลเดอร์
     for (const folder of foldersToFetch) {
       console.log(`📂 Fetching folder: ${folder}`);
 
@@ -37,11 +66,11 @@ const emailService = () => {
             return resolve();
           }
 
+          // ค้นหาผลลัพธ์จากวันที่ที่กำหนด
           imap.search(
-            // ["ALL"],
             [
-              ["SINCE", "1-Jan-2025"],
-              ["BEFORE", "31-Jan-2025"],
+              ["SINCE", since],
+              ["BEFORE", before],
             ],
             async function (err, results) {
               if (err || !results || results.length === 0) {
@@ -52,6 +81,7 @@ const emailService = () => {
               const latest = results.slice(-1000);
               const batchSize = 100;
 
+              // ดึงข้อมูลทีละ batch
               for (let i = 0; i < latest.length; i += batchSize) {
                 const batch = latest.slice(i, i + batchSize);
 
@@ -213,4 +243,4 @@ const emailService = () => {
   imap.connect();
 };
 
-module.exports = emailService;
+module.exports = fetchNewEmails;

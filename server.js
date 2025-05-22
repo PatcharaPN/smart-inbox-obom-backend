@@ -4,15 +4,18 @@ const emailService = require("./src/services/emailService"); // โมเดล�
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
+const fetchNewEmails = require("./src/services/FetchNewEmail");
 const app = express();
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
 const PORT = 3000;
+const { CronJob } = require("cron");
 const dotenv = require("dotenv");
 const {
   FetchEmails,
   FetchEmail,
+  FetchNewEmails,
 } = require("./src/controllers/emailController");
 app.use(express.json());
 app.use(
@@ -35,9 +38,14 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadPath),
   filename: (req, file, cb) => cb(null, file.originalname),
 });
+
+const job = new CronJob("0 8 * * *", () => {
+  fetchNewEmails();
+});
+job.start();
 const upload = multer({ storage });
 
-app.use("/files", express.static(uploadPath));
+app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
 // Upload PDF
 app.post("/upload", upload.single("pdf"), (req, res) => {
@@ -99,6 +107,8 @@ app.get("/emails", FetchEmail);
  *         description: A list of Emails
  */
 app.get("/fetch-emails", FetchEmails);
+// app.get("/fetch-new", FetchNewEmails);
+
 /**
  * @swagger
  * /list:
@@ -108,42 +118,50 @@ app.get("/fetch-emails", FetchEmails);
  *       200:
  *         description: A list of Emails
  */
-app.get("/list", (req, res) => {
-  const { dirPath } = req.query; // ใช้ชื่อพารามิเตอร์ใหม่
+const BASE_DIR = path.join(__dirname, "uploads");
 
-  console.log("Received path:", dirPath); // ตรวจสอบว่าค่า path ที่ได้รับถูกต้องหรือไม่
+app.get("/explorer", async (req, res) => {
+  const requestedPath = req.query.path || "Uploads";
+  const fullPath = path.join(__dirname, requestedPath);
+  const getFileCategory = (filename) => {
+    const ext = path.extname(filename).toLowerCase();
 
-  if (!dirPath) {
-    return res.status(400).json({ error: "Directory path is required" });
+    if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
+      return "image";
+    if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext)) return "video";
+    if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "audio";
+    if ([".pdf"].includes(ext)) return "pdf";
+    if ([".txt", ".md", ".log"].includes(ext)) return "text";
+    if ([".doc", ".docx"].includes(ext)) return "word";
+    if ([".xls", ".xlsx"].includes(ext)) return "excel";
+    if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
+    return "file";
+  };
+  try {
+    const files = await fs.promises.readdir(fullPath, { withFileTypes: true });
+
+    const result = await Promise.all(
+      files.map(async (file) => {
+        const filePath = path.join(fullPath, file.name);
+        const stat = await fs.promises.stat(filePath);
+
+        return {
+          name: file.name,
+          type: file.isDirectory() ? "folder" : "file",
+          category: file.isDirectory() ? "Folder" : getFileCategory(file.name),
+          path: path.join(requestedPath, file.name),
+          modified: stat.mtime,
+          size: file.isDirectory() ? null : stat.size,
+        };
+      })
+    );
+
+    res.json(result);
+  } catch (err) {
+    console.error("❌ Error reading directory:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  const fullPath = path.join(baseUploadPath, dirPath); // ใช้ dirPath แทน path
-  console.log("Full path:", fullPath);
-
-  // ตรวจสอบว่าโฟลเดอร์นี้มีอยู่จริงหรือไม่
-  if (!fs.existsSync(fullPath)) {
-    return res.status(404).json({ error: "Directory not found" });
-  }
-
-  // อ่านไฟล์และส่งข้อมูลกลับ
-  fs.readdir(fullPath, (err, files) => {
-    if (err) {
-      console.error("Error reading directory:", err);
-      return res.status(500).json({ error: "Failed to read directory" });
-    }
-
-    const entries = files.map((file) => ({
-      name: file,
-      type: fs.statSync(path.join(fullPath, file)).isDirectory()
-        ? "folder"
-        : "file",
-      path: path.join(dirPath, file), // สร้างเส้นทาง relative
-    }));
-
-    res.json(entries);
-  });
 });
-
 app.get("/file", (req, res) => {
   const filePath = req.query.path;
   const fullFilePath = path.join(baseUploadPath, filePath);

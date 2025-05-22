@@ -47,6 +47,44 @@ exports.FetchEmail = async (req, res) => {
     if (folder && folder !== "all") {
       filter.folder = folder;
     }
+    if (req.query.new === "true") {
+      const filter = {};
+
+      if (search && search.trim() !== "") {
+        const searchRegEX = new RegExp(search.trim(), "i");
+        filter.$or = [
+          { subject: searchRegEX },
+          { text: searchRegEX },
+          { from: searchRegEX },
+        ];
+      }
+
+      if (selectedYear && selectedYear !== "all") {
+        const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+        const endOfYear = new Date(
+          `${parseInt(selectedYear) + 1}-01-01T00:00:00.000Z`
+        );
+        filter.date = { $gte: startOfYear, $lt: endOfYear };
+      }
+
+      if (folder && folder !== "all") {
+        filter.folder = folder;
+      }
+
+      const emails = await Email.find(filter).sort({ date: -1 }).limit(7);
+
+      const year = await Email.aggregate([
+        { $project: { year: { $year: "$date" } } },
+        { $group: { _id: "$year" } },
+        { $sort: { _id: -1 } },
+      ]);
+
+      return res.json({
+        data: emails,
+        year, // ส่ง year กลับมาให้ frontend
+      });
+    }
+
     if (search && search.trim() !== "") {
       const searchRegEX = new RegExp(search.trim(), "i");
       filter.$or = [
@@ -80,3 +118,42 @@ exports.FetchEmail = async (req, res) => {
     res.status(500).json({ error: "Fail to fetch email from server" });
   }
 };
+// exports.FetchNewEmails = async (req, res) => {
+//   try {
+//     // Get the current date
+//     const currentDate = new Date();
+
+//     // emails received in the last 7 days
+//     const sevenDaysAgo = new Date(
+//       currentDate.setDate(currentDate.getDate() - 7)
+//     );
+
+//     // Fetch emails that are newer than 7 days
+//     const newEmails = await Email.find({ date: { $gte: sevenDaysAgo } })
+//       .sort({ date: -1 }) // Sort by date (newest first)
+//       .limit(10); // Limit to the latest 10 emails
+
+//     if (newEmails.length > 0) {
+//       console.log("Latest new emails:", newEmails);
+//       res.json({
+//         success: true,
+//         message: "Fetched latest new emails",
+//         emails: newEmails,
+//       });
+//     } else {
+//       console.log("No new emails found");
+//       res.json({
+//         success: false,
+//         message: "No new emails found",
+//         emails: [],
+//       });
+//     }
+//   } catch (err) {
+//     console.error("Error Fetching latest new emails:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching latest new emails",
+//       error: err.message,
+//     });
+//   }
+// };

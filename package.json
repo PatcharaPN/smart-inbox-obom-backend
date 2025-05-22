@@ -16,6 +16,7 @@
     "bcryptjs": "^3.0.2",
     "check-disk-space": "^3.4.0",
     "cors": "^2.8.5",
+    "cron": "^4.3.0",
     "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
