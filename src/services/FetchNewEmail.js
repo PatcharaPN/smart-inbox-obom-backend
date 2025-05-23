@@ -7,7 +7,7 @@ const EmailModel = require("../models/emailModel");
 
 connectDB();
 
-const attachmentsDir = path.join(__dirname, "../../attachments/Purchase");
+const attachmentsDir = path.join(__dirname, "../../attachments/SalesSupport");
 if (!fs.existsSync(attachmentsDir)) {
   fs.mkdirSync(attachmentsDir, { recursive: true });
   console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
@@ -177,7 +177,7 @@ const fetchNewEmails = () => {
                               // ✅ Save the file
                               const relativePath = path
                                 .join(
-                                  "Purchase",
+                                  "SalesSupport",
                                   folderName,
                                   subfolder,
                                   filename

@@ -121,11 +121,12 @@ app.get("/fetch-emails", FetchEmails);
 const BASE_DIR = path.join(__dirname, "uploads");
 
 app.get("/explorer", async (req, res) => {
-  const requestedPath = req.query.path || "Uploads";
-  const fullPath = path.join(__dirname, requestedPath);
+  const requestedPaths = req.query.paths
+    ? req.query.paths.split(",")
+    : ["Uploads"];
+
   const getFileCategory = (filename) => {
     const ext = path.extname(filename).toLowerCase();
-
     if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
       return "image";
     if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext)) return "video";
@@ -137,31 +138,45 @@ app.get("/explorer", async (req, res) => {
     if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
     return "file";
   };
+
   try {
-    const files = await fs.promises.readdir(fullPath, { withFileTypes: true });
+    const allResults = await Promise.all(
+      requestedPaths.map(async (requestedPath) => {
+        const fullPath = path.join(__dirname, requestedPath);
+        const files = await fs.promises.readdir(fullPath, {
+          withFileTypes: true,
+        });
 
-    const result = await Promise.all(
-      files.map(async (file) => {
-        const filePath = path.join(fullPath, file.name);
-        const stat = await fs.promises.stat(filePath);
+        return Promise.all(
+          files.map(async (file) => {
+            const filePath = path.join(fullPath, file.name);
+            const stat = await fs.promises.stat(filePath);
 
-        return {
-          name: file.name,
-          type: file.isDirectory() ? "folder" : "file",
-          category: file.isDirectory() ? "Folder" : getFileCategory(file.name),
-          path: path.join(requestedPath, file.name),
-          modified: stat.mtime,
-          size: file.isDirectory() ? null : stat.size,
-        };
+            return {
+              name: file.name,
+              type: file.isDirectory() ? "folder" : "file",
+              category: file.isDirectory()
+                ? "Folder"
+                : getFileCategory(file.name),
+              path: path.join(requestedPath, file.name),
+              modified: stat.mtime,
+              size: file.isDirectory() ? null : stat.size,
+            };
+          })
+        );
       })
     );
 
-    res.json(result);
+    // รวมไฟล์ทั้งหมดจากหลาย directory เป็น array เดียว
+    const mergedResults = allResults.flat();
+
+    res.json(mergedResults);
   } catch (err) {
-    console.error("❌ Error reading directory:", err);
+    console.error("❌ Error reading directories:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 app.get("/file", (req, res) => {
   const filePath = req.query.path;
   const fullFilePath = path.join(baseUploadPath, filePath);
