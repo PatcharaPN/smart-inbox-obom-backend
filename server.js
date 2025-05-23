@@ -21,7 +21,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: "*",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "DELETE"],
     credentials: true,
   })
 );
@@ -35,22 +35,26 @@ if (!fs.existsSync(uploadPath)) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadPath),
-  filename: (req, file, cb) => cb(null, file.originalname),
+  destination: function (req, file, cb) {
+    const targetPath = req.body.targetPath || "Uploads";
+    const fullPath = path.join(__dirname, targetPath);
+    fs.mkdirSync(fullPath, { recursive: true });
+    cb(null, fullPath);
+  },
+  filename: function (req, file, cb) {
+    cb(null, file.originalname);
+  },
 });
-
+const upload = multer({ storage });
 const job = new CronJob("0 8 * * *", () => {
   fetchNewEmails();
 });
 job.start();
-const upload = multer({ storage });
 
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
 // Upload PDF
-app.post("/upload", upload.single("pdf"), (req, res) => {
-  res.send({ message: "Uploaded successfully", file: req.file.originalname });
-});
+
 app.use("/auth", authRoutes);
 app.get("/", (req, res) => {
   res.send("📨 Email Service API is running");
@@ -58,14 +62,8 @@ app.get("/", (req, res) => {
 
 dotenv.config();
 app.use("/attachments", express.static(path.join(__dirname, "attachments")));
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST"],
-    credentials: true,
-  })
-);
 
+app.use(cors());
 /**
  * @swagger
  * /fetch-email:
@@ -174,6 +172,69 @@ app.get("/explorer", async (req, res) => {
   } catch (err) {
     console.error("❌ Error reading directories:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+const uploadMiddleware = multer({
+  storage: multer.diskStorage({
+    destination: function (req, file, cb) {
+      const targetPath = req.query.targetPath || "Uploads";
+      const uploadPath = path.join(__dirname, targetPath);
+      fs.mkdirSync(uploadPath, { recursive: true });
+      cb(null, uploadPath);
+    },
+    filename: function (req, file, cb) {
+      cb(null, file.originalname);
+    },
+  }),
+});
+
+app.post("/upload", uploadMiddleware.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  res.json({
+    message: "File uploaded successfully",
+    filename: req.file.originalname,
+    path: req.file.path,
+  });
+});
+const fsPromises = require("fs").promises;
+
+app.delete("/delete", async (req, res) => {
+  try {
+    let targetPath = req.query.path;
+    if (!targetPath) {
+      return res.status(400).json({ error: "No path specified" });
+    }
+
+    // ถ้ามีคำว่า "Uploads/" ข้างหน้าให้ตัดออก
+    if (targetPath.startsWith("Uploads/")) {
+      targetPath = targetPath.slice("Uploads/".length);
+    }
+
+    const sanitizedPath = path
+      .normalize(targetPath)
+      .replace(/^(\.\.(\/|\\|$))+/, "");
+    const fullPath = path.join(__dirname, "Uploads", sanitizedPath);
+
+    console.log("Deleting path:", fullPath); // debug
+
+    const stats = await fsPromises.stat(fullPath);
+
+    if (stats.isDirectory()) {
+      await fsPromises.rm(fullPath, { recursive: true, force: true });
+      return res.json({ message: "Folder deleted successfully" });
+    } else {
+      await fsPromises.unlink(fullPath);
+      return res.json({ message: "File deleted successfully" });
+    }
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return res.status(404).json({ error: "File or folder not found" });
+    }
+    console.error(err);
+    return res.status(500).json({ error: "Failed to delete" });
   }
 });
 
