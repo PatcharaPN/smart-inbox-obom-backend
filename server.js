@@ -4,6 +4,7 @@ const emailService = require("./src/services/emailService"); // โมเดล�
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
+const connectDB = require("./src/middlewares/connectDB");
 const fetchNewEmails = require("./src/services/FetchNewEmail");
 const app = express();
 const fs = require("fs");
@@ -33,7 +34,7 @@ const baseUploadPath = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath);
 }
-
+connectDB();
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const targetPath = req.body.targetPath || "Uploads";
@@ -304,6 +305,38 @@ app.delete("/delete", async (req, res) => {
     }
     console.error(err);
     return res.status(500).json({ error: "Failed to delete" });
+  }
+});
+
+app.post("/create-folder", async (req, res) => {
+  const filePath = req.query.path || "Uploads";
+  const folderName = req.query.foldername;
+  if (!folderName || folderName.trim() === "") {
+    return res.status(500).json({
+      error: "Folder name must be named",
+    });
+  }
+  try {
+    const sanitizedPath = path
+      .normalize(filePath)
+      .replace(/^(\.\.(\/|\\|$))+/, "");
+
+    const fullPath = path.join(__dirname, sanitizedPath, folderName);
+
+    if (fs.existsSync(fullPath)) {
+      return res.status(400).json({
+        error: "Folder already exists",
+      });
+    }
+    await fs.promises.mkdir(fullPath, { recursive: true });
+
+    res.status(201).json({
+      message: "📁 Folder created successfully",
+      path: path.join(sanitizedPath, folderName),
+    });
+  } catch (error) {
+    console.error("❌ Error creating folder:", error);
+    res.status(500).json({ error: "Failed to create folder" });
   }
 });
 

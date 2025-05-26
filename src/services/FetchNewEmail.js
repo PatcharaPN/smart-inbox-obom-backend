@@ -5,8 +5,6 @@ const connectDB = require("../middlewares/connectDB");
 const path = require("path");
 const EmailModel = require("../models/emailModel");
 
-connectDB();
-
 const attachmentsDir = path.join(__dirname, "../../attachments/Purchase");
 if (!fs.existsSync(attachmentsDir)) {
   fs.mkdirSync(attachmentsDir, { recursive: true });

@@ -1,11 +1,9 @@
 const Imap = require("imap");
 const { simpleParser } = require("mailparser");
 const fs = require("fs");
-const connectDB = require("../middlewares/connectDB");
+
 const path = require("path");
 const EmailModel = require("../models/emailModel");
-
-connectDB();
 
 const attachmentsDir = path.join(__dirname, "../../attachments/Purchase");
 if (!fs.existsSync(attachmentsDir)) {
