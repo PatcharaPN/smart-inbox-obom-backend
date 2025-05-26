@@ -126,15 +126,16 @@ app.get("/explorer", async (req, res) => {
   const getFileCategory = (filename) => {
     const ext = path.extname(filename).toLowerCase();
     if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
-      return "image";
-    if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext)) return "video";
-    if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "audio";
+      return "รูปภาพ";
+    if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext))
+      return "วิดีโอ";
+    if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "ไฟล์เสียง";
     if ([".pdf"].includes(ext)) return "pdf";
-    if ([".txt", ".md", ".log"].includes(ext)) return "text";
+    if ([".txt", ".md", ".log"].includes(ext)) return "ไฟล์อักษร";
     if ([".doc", ".docx"].includes(ext)) return "word";
     if ([".xls", ".xlsx"].includes(ext)) return "excel";
     if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
-    return "file";
+    return "ไฟล์";
   };
 
   try {
@@ -174,6 +175,74 @@ app.get("/explorer", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+const DEFAULT_LIMIT = 10;
+
+app.get("/recent-files", async (req, res) => {
+  try {
+    const requestedPaths = req.query.paths
+      ? req.query.paths.split(",")
+      : ["Uploads"];
+    const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
+
+    const getFileCategory = (filename) => {
+      const ext = path.extname(filename).toLowerCase();
+      if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
+        return "image";
+      if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext))
+        return "video";
+      if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "audio";
+      if ([".pdf"].includes(ext)) return "pdf";
+      if ([".txt", ".md", ".log"].includes(ext)) return "text";
+      if ([".doc", ".docx"].includes(ext)) return "word";
+      if ([".xls", ".xlsx"].includes(ext)) return "excel";
+      if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext))
+        return "archive";
+      return "file";
+    };
+
+    const allResults = await Promise.all(
+      requestedPaths.map(async (requestedPath) => {
+        const fullPath = path.join(__dirname, requestedPath);
+        const files = await fs.promises.readdir(fullPath, {
+          withFileTypes: true,
+        });
+
+        return Promise.all(
+          files.map(async (file) => {
+            const filePath = path.join(fullPath, file.name);
+            const stat = await fs.promises.stat(filePath);
+
+            return {
+              name: file.name,
+              type: file.isDirectory() ? "folder" : "file",
+              category: file.isDirectory()
+                ? "Folder"
+                : getFileCategory(file.name),
+              path: path.join(requestedPath, file.name),
+              modified: stat.mtime,
+              size: file.isDirectory() ? null : stat.size,
+            };
+          })
+        );
+      })
+    );
+
+    const mergedResults = allResults.flat();
+
+    const onlyFiles = mergedResults.filter((item) => item.type === "file");
+
+    onlyFiles.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+
+    const limitedFiles = onlyFiles.slice(0, limit);
+
+    res.json(limitedFiles);
+  } catch (err) {
+    console.error("❌ Error reading recent files:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 const uploadMiddleware = multer({
   storage: multer.diskStorage({
     destination: function (req, file, cb) {
