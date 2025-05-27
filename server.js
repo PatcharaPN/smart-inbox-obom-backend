@@ -308,6 +308,71 @@ app.delete("/delete", async (req, res) => {
   }
 });
 
+app.get("/search", async (req, res) => {
+  const query = req.query.query?.toLowerCase();
+  if (!query) return res.status(400).json({ error: "Query is required" });
+
+  const basePath = path.join(__dirname, "Uploads");
+
+  const getFileCategory = (filename) => {
+    const ext = path.extname(filename).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
+      return "รูปภาพ";
+    if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext))
+      return "วิดีโอ";
+    if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "ไฟล์เสียง";
+    if ([".pdf"].includes(ext)) return "pdf";
+    if ([".txt", ".md", ".log"].includes(ext)) return "ไฟล์อักษร";
+    if ([".doc", ".docx"].includes(ext)) return "word";
+    if ([".xls", ".xlsx"].includes(ext)) return "excel";
+    if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
+    return "ไฟล์";
+  };
+
+  const results = [];
+
+  // Recursive walk
+  async function walk(dir, relativePath = "") {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relPath = path.join(relativePath, entry.name);
+      const stats = await fs.promises.stat(fullPath);
+
+      const item = {
+        name: entry.name,
+        type: entry.isDirectory() ? "folder" : "file",
+        category: entry.isDirectory() ? "Folder" : getFileCategory(entry.name),
+        path: path.join("Uploads", relPath),
+        modified: stats.mtime,
+        size: entry.isDirectory() ? null : stats.size,
+      };
+
+      // Match with query
+      if (
+        item.name.toLowerCase().includes(query) ||
+        item.type.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query)
+      ) {
+        results.push(item);
+      }
+
+      if (entry.isDirectory()) {
+        await walk(fullPath, relPath);
+      }
+    }
+  }
+
+  try {
+    await walk(basePath);
+    res.json(results);
+  } catch (error) {
+    console.error("❌ Error during search:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/create-folder", async (req, res) => {
   const filePath = req.query.path || "Uploads";
   const folderName = req.query.foldername;
