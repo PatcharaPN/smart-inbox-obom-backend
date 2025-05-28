@@ -1,7 +1,6 @@
 const Imap = require("imap");
 const { simpleParser } = require("mailparser");
 const fs = require("fs");
-
 const path = require("path");
 const EmailModel = require("../models/emailModel");
 
@@ -38,8 +37,8 @@ const emailService = () => {
           imap.search(
             // ["ALL"],
             [
-              ["SINCE", "1-Jan-2025"],
-              ["BEFORE", "31-Jan-2025"],
+              ["SINCE", "1-Mar-2025"],
+              ["BEFORE", "31-Mar-2025"],
             ],
             async function (err, results) {
               if (err || !results || results.length === 0) {

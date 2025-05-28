@@ -18,6 +18,7 @@ const {
   FetchEmail,
   FetchNewEmails,
 } = require("./src/controllers/emailController");
+const EmailModel = require("./src/models/emailModel");
 app.use(express.json());
 app.use(
   cors({
@@ -305,6 +306,42 @@ app.delete("/delete", async (req, res) => {
     }
     console.error(err);
     return res.status(500).json({ error: "Failed to delete" });
+  }
+});
+app.get("/filter-by-date", async (req, res) => {
+  const { startDate, endDate, limit = 20, page = 1 } = req.query;
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({ error: "Missing startDate or endDate" });
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const limitNum = parseInt(limit);
+  const pageNum = parseInt(page);
+  const skip = (pageNum - 1) * limitNum;
+
+  try {
+    // นับจำนวนอีเมลในช่วงวันที่นั้น
+    const totalCount = await EmailModel.countDocuments({
+      date: { $gte: start, $lte: end },
+    });
+
+    const totalPage = Math.ceil(totalCount / limitNum);
+
+    // ดึงข้อมูลอีเมลตาม page, limit, วันที่
+    const result = await EmailModel.aggregate([
+      { $match: { date: { $gte: start, $lte: end } } },
+      { $sort: { date: -1 } },
+      { $skip: skip },
+      { $limit: limitNum },
+    ]);
+
+    res
+      .status(200)
+      .json({ data: result, totalCount, totalPage, page: pageNum });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
