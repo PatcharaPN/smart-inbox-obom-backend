@@ -322,14 +322,12 @@ app.get("/filter-by-date", async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   try {
-    // นับจำนวนอีเมลในช่วงวันที่นั้น
     const totalCount = await EmailModel.countDocuments({
       date: { $gte: start, $lte: end },
     });
 
     const totalPage = Math.ceil(totalCount / limitNum);
 
-    // ดึงข้อมูลอีเมลตาม page, limit, วันที่
     const result = await EmailModel.aggregate([
       { $match: { date: { $gte: start, $lte: end } } },
       { $sort: { date: -1 } },
