@@ -37,8 +37,8 @@ const emailService = () => {
           imap.search(
             // ["ALL"],
             [
-              ["SINCE", "1-Mar-2025"],
-              ["BEFORE", "31-Mar-2025"],
+              ["SINCE", "1-Jun-2024"],
+              ["BEFORE", "1-Aug-2024"],
             ],
             async function (err, results) {
               if (err || !results || results.length === 0) {
@@ -92,8 +92,17 @@ const emailService = () => {
                             messageId,
                           });
                           if (exists) {
-                            console.log(`⚠️ Duplicate: ${messageId}`);
-                            return;
+                            if (
+                              !exists.attachments ||
+                              exists.attachments.length === 0
+                            ) {
+                              console.log(
+                                `🔄 Reprocessing ${messageId} for missing attachments`
+                              );
+                            } else {
+                              console.log(`⚠️ Duplicate: ${messageId}`);
+                              return;
+                            }
                           }
 
                           const emailData = {
