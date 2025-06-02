@@ -7,27 +7,31 @@ const getInbox = require("./src/services/checkMail");
 const connectDB = require("./src/middlewares/connectDB");
 const fetchNewEmails = require("./src/services/FetchNewEmail");
 const app = express();
+const cookieParser = require("cookie-parser");
 const fs = require("fs");
 const path = require("path");
+const { google } = require("googleapis");
 const cors = require("cors");
 const PORT = 3000;
 const { CronJob } = require("cron");
 const dotenv = require("dotenv");
+const FetchNewEmails = require("./src/services/FetchNewEmail");
 const {
   FetchEmails,
   FetchEmail,
-  FetchNewEmails,
 } = require("./src/controllers/emailController");
 const EmailModel = require("./src/models/emailModel");
 app.use(express.json());
 app.use(
   cors({
-    origin: "*",
-    methods: ["GET", "POST", "DELETE"],
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "DELETE", "PUT"],
     credentials: true,
   })
 );
 require("./src/configs/swagger")(app);
+let cacheGAData = null;
+app.use(cookieParser());
 const uploadPath = path.join(__dirname, "uploads");
 
 const baseUploadPath = path.join(__dirname, "uploads");
@@ -107,7 +111,7 @@ app.get("/emails", FetchEmail);
  *         description: A list of Emails
  */
 app.get("/fetch-emails", FetchEmails);
-// app.get("/fetch-new", FetchNewEmails);
+app.get("/fetch-new", FetchNewEmails);
 
 /**
  * @swagger
@@ -440,6 +444,64 @@ app.post("/create-folder", async (req, res) => {
   }
 });
 
+const fetchGAReport = async (Granularity = "daily") => {
+  try {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: "./src/credentials/abiding-ion-453707-v2-8d672386f50c.json",
+      scopes: "https://www.googleapis.com/auth/analytics.readonly",
+    });
+
+    const analyticsData = google.analyticsdata("v1beta");
+    const authClient = await auth.getClient();
+    google.options({ auth: authClient });
+    let dimensionName;
+    let startDate;
+
+    switch (Granularity) {
+      case "monthly":
+        dimensionName = "month";
+        startDate = "90daysAgo";
+        break;
+      case "weekly":
+        dimensionName = "week";
+        startDate = "28daysAgo";
+        break;
+      case "daily":
+      default:
+        dimensionName = "date";
+        startDate = "7daysAgo";
+        break;
+    }
+
+    const response = await analyticsData.properties.runReport({
+      property: "properties/434121266",
+      requestBody: {
+        dateRanges: [{ startDate, endDate: "today" }],
+        dimensions: [{ name: dimensionName }, { name: "pagePath" }],
+        metrics: [{ name: "screenPageViews" }],
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("GA API error:", error);
+  }
+};
+app.get("/ga4-report", async (req, res) => {
+  const { granularity = "daily" } = req.query;
+
+  if (cacheGAData) {
+    return res.json(cacheGAData);
+  }
+
+  try {
+    const data = await fetchGAReport(granularity);
+    cacheGAData = data;
+    res.json(data);
+  } catch (error) {
+    console.error("GA Report error:", error);
+    res.status(500).json({ error: "Failed to fetch GA report" });
+  }
+});
 app.get("/file", (req, res) => {
   const filePath = req.query.path;
   const fullFilePath = path.join(baseUploadPath, filePath);
