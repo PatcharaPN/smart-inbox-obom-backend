@@ -26,4 +26,4 @@ uploads
 *.njsproj
 *.sln
 *.sw?
-*.env
+*credentials/
