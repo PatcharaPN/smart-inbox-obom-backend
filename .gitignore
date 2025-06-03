@@ -27,3 +27,4 @@ uploads
 *.sln
 *.sw?
 *credentials/
+credentials/

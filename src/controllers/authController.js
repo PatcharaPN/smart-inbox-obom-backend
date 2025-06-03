@@ -299,3 +299,45 @@ exports.getUserById = async (req, res) => {
     });
   }
 };
+exports.uploadProfilePic = async (req, res) => {
+  try {
+    let token = req.cookies.accessToken;
+    if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+    if (!token)
+      return res.status(401).json({
+        message: "No token Provided",
+      });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const user = await User.findById(userId);
+    if (!user)
+      return res.status(404).json({
+        message: "User not found",
+      });
+
+    const profilePath = req.file?.path.replace(/\\/g, "/");
+
+    user.profilePic = profilePath;
+
+    await user.save();
+
+    const userData = user.toObject();
+    delete userData.password;
+
+    res.status(200).json({
+      status: "success",
+      message: "Profile picture updated",
+      data: { user: userData },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error uploading profile picture",
+      error: error.message,
+    });
+  }
+};

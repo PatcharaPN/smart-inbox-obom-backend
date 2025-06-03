@@ -56,7 +56,7 @@ const job = new CronJob("0 8 * * *", () => {
   fetchNewEmails();
 });
 job.start();
-
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
 // Upload PDF
