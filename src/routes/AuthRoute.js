@@ -23,11 +23,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 router.post("/login", authController.login);
-router.post("/logout", authController.logout);
 router.post("/register", authController.register);
 router.get("/me", authController.getUserProfile);
 router.get("/user/:id", authController.getUserById);
-router.post("/refresh", authController.refresh);
 router.put("/me/edit", authController.editUserByCredential);
 router.put(
   "/upload-profile-pic",

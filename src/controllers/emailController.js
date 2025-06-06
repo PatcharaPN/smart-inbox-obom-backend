@@ -26,7 +26,97 @@ exports.FetchEmails = async (req, res) => {
     });
   }
 };
+// exports.FetchEmail = async (req, res) => {
+//   const search = req.query.search;
+//   const folder = req.query.folder;
+//   const selectedYear = req.query.year;
+//   const page = parseInt(req.query.page) || 1;
+//   const limit = parseInt(req.query.limit) || 5;
+//   const skip = (page - 1) * limit;
 
+//   try {
+//     const filter = {};
+//     if (selectedYear && selectedYear !== "all") {
+//       const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+//       const endOfYear = new Date(
+//         `${parseInt(selectedYear) + 1}-01-01T00:00:00.000Z`
+//       );
+//       filter.date = { $gte: startOfYear, $lt: endOfYear };
+//     }
+//     if (folder && folder !== "all") {
+//       filter.folder = folder;
+//     }
+//     if (req.query.new === "true") {
+//       const filter = {};
+
+//       if (search && search.trim() !== "") {
+//         const searchRegEX = new RegExp(search.trim(), "i");
+//         filter.$or = [
+//           { subject: searchRegEX },
+//           { text: searchRegEX },
+//           { from: searchRegEX },
+//         ];
+//       }
+
+//       if (selectedYear && selectedYear !== "all") {
+//         const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+//         const endOfYear = new Date(
+//           `${parseInt(selectedYear) + 1}-01-01T00:00:00.000Z`
+//         );
+//         filter.date = { $gte: startOfYear, $lt: endOfYear };
+//       }
+
+//       if (folder && folder !== "all") {
+//         filter.folder = folder;
+//       }
+
+//       const emails = await Email.find(filter).sort({ date: -1 }).limit(7);
+
+//       const year = await Email.aggregate([
+//         { $project: { year: { $year: "$date" } } },
+//         { $group: { _id: "$year" } },
+//         { $sort: { _id: -1 } },
+//       ]);
+
+//       return res.json({
+//         data: emails,
+//         year,
+//       });
+//     }
+
+//     if (search && search.trim() !== "") {
+//       const searchRegEX = new RegExp(search.trim(), "i");
+//       filter.$or = [
+//         { subject: searchRegEX },
+//         { text: searchRegEX },
+//         { from: searchRegEX },
+//       ];
+//     }
+//     const emails = await Email.find(filter)
+//       .sort({ date: -1 })
+//       .skip(skip)
+//       .limit(limit);
+
+//     const total = await Email.countDocuments(filter);
+
+//     const year = await Email.aggregate([
+//       { $project: { year: { $year: "$date" } } },
+//       { $group: { _id: "$year" } },
+//       { $sort: { _id: -1 } },
+//     ]);
+
+//     res.json({
+//       data: emails,
+//       page,
+//       totalPage: Math.ceil(total / limit),
+//       total,
+//       year,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: "Fail to fetch email from server" });
+//   }
+// };
 exports.FetchEmail = async (req, res) => {
   const search = req.query.search;
   const folder = req.query.folder;
@@ -35,8 +125,16 @@ exports.FetchEmail = async (req, res) => {
   const limit = parseInt(req.query.limit) || 5;
   const skip = (page - 1) * limit;
 
+  // ตรวจสอบว่า req.user มีค่าและมี _id
+  const userId = req.user && req.user._id ? req.user._id : req.query.userId;
+
+  if (!userId) {
+    return res.status(400).json({ error: "User ID is required" });
+  }
+
   try {
-    const filter = {};
+    const filter = { user: userId }; // กรองอีเมลที่สัมพันธ์กับผู้ใช้
+
     if (selectedYear && selectedYear !== "all") {
       const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
       const endOfYear = new Date(
@@ -44,14 +142,16 @@ exports.FetchEmail = async (req, res) => {
       );
       filter.date = { $gte: startOfYear, $lt: endOfYear };
     }
+
     if (folder && folder !== "all") {
       filter.folder = folder;
     }
-    if (req.query.new === "true") {
-      const filter = {};
 
-      if (search && search.trim() !== "") {
-        const searchRegEX = new RegExp(search.trim(), "i");
+    if (req.query.new === "true") {
+      const searchRegEX =
+        search && search.trim() !== "" ? new RegExp(search.trim(), "i") : null;
+
+      if (searchRegEX) {
         filter.$or = [
           { subject: searchRegEX },
           { text: searchRegEX },
@@ -59,21 +159,10 @@ exports.FetchEmail = async (req, res) => {
         ];
       }
 
-      if (selectedYear && selectedYear !== "all") {
-        const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
-        const endOfYear = new Date(
-          `${parseInt(selectedYear) + 1}-01-01T00:00:00.000Z`
-        );
-        filter.date = { $gte: startOfYear, $lt: endOfYear };
-      }
-
-      if (folder && folder !== "all") {
-        filter.folder = folder;
-      }
-
       const emails = await Email.find(filter).sort({ date: -1 }).limit(7);
 
       const year = await Email.aggregate([
+        { $match: filter }, // เพิ่ม $match เพื่อกรองข้อมูลให้ตรงกับ user และเงื่อนไข
         { $project: { year: { $year: "$date" } } },
         { $group: { _id: "$year" } },
         { $sort: { _id: -1 } },
@@ -85,14 +174,18 @@ exports.FetchEmail = async (req, res) => {
       });
     }
 
-    if (search && search.trim() !== "") {
-      const searchRegEX = new RegExp(search.trim(), "i");
+    // การค้นหาตามคีย์เวิร์ด search
+    const searchRegEX =
+      search && search.trim() !== "" ? new RegExp(search.trim(), "i") : null;
+    if (searchRegEX) {
       filter.$or = [
         { subject: searchRegEX },
         { text: searchRegEX },
         { from: searchRegEX },
       ];
     }
+
+    // ดึงอีเมลของผู้ใช้จากฐานข้อมูลตามเงื่อนไข
     const emails = await Email.find(filter)
       .sort({ date: -1 })
       .skip(skip)
@@ -101,6 +194,7 @@ exports.FetchEmail = async (req, res) => {
     const total = await Email.countDocuments(filter);
 
     const year = await Email.aggregate([
+      { $match: filter },
       { $project: { year: { $year: "$date" } } },
       { $group: { _id: "$year" } },
       { $sort: { _id: -1 } },
@@ -115,9 +209,10 @@ exports.FetchEmail = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Fail to fetch email from server" });
+    res.status(500).json({ error: "Failed to fetch email from server" });
   }
 };
+
 // exports.FetchNewEmails = async (req, res) => {
 //   try {
 //     // Get the current date

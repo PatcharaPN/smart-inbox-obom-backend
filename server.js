@@ -4,9 +4,11 @@ const emailService = require("./src/services/emailService"); // โมเดล�
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
+const authMiddleware = require("./src/middlewares/authMiddleWare");
 const connectDB = require("./src/middlewares/connectDB");
 const fetchNewEmails = require("./src/services/FetchNewEmail");
 const app = express();
+const User = require("./src/models/userModel");
 const cookieParser = require("cookie-parser");
 const fs = require("fs");
 const path = require("path");
@@ -15,20 +17,43 @@ const cors = require("cors");
 const PORT = 3000;
 const { CronJob } = require("cron");
 const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
+const Upload = require("./src/models/uploadModel");
 const FetchNewEmails = require("./src/services/FetchNewEmail");
 const {
   FetchEmails,
   FetchEmail,
 } = require("./src/controllers/emailController");
 const EmailModel = require("./src/models/emailModel");
+const EmailAccountModel = require("./src/models/emailAccounts");
+
 app.use(express.json());
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "DELETE", "PUT"],
+    origin: "*",
+    methods: ["GET", "DELETE", "POST", "PUT"],
     credentials: true,
   })
 );
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "https://5944-125-25-17-122.ngrok-free.app",
+// ];
+
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       if (!origin) return callback(null, true); // สำหรับ Postman หรือ curl
+//       if (allowedOrigins.includes(origin)) {
+//         callback(null, origin); // ✅ ส่ง origin กลับ ไม่ใช่ true
+//       } else {
+//         callback(new Error("Not allowed by CORS"));
+//       }
+//     },
+//     credentials: true,
+//   })
+// );
 require("./src/configs/swagger")(app);
 let cacheGAData = null;
 app.use(cookieParser());
@@ -62,6 +87,7 @@ app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 // Upload PDF
 
 app.use("/auth", authRoutes);
+
 app.get("/", (req, res) => {
   res.send("📨 Email Service API is running");
 });
@@ -69,7 +95,6 @@ app.get("/", (req, res) => {
 dotenv.config();
 app.use("/attachments", express.static(path.join(__dirname, "attachments")));
 
-app.use(cors());
 /**
  * @swagger
  * /fetch-email:
@@ -80,8 +105,14 @@ app.use(cors());
  *         description: A list of Emails
  */
 app.post("/fetch-email", (req, res) => {
+  const { userId } = req.query;
+  if (!userId) {
+    return res.status(400).json({
+      error: "User ID is required",
+    });
+  }
   try {
-    emailService();
+    emailService(userId);
     res.status(200).json({ message: "📬 Fetching latest email..." });
   } catch (err) {
     console.error("❌ Failed to fetch email:", err);
@@ -129,6 +160,7 @@ app.get("/explorer", async (req, res) => {
     ? req.query.paths.split(",")
     : ["Uploads"];
 
+  // ฟังก์ชันในการตรวจสอบประเภทของไฟล์
   const getFileCategory = (filename) => {
     const ext = path.extname(filename).toLowerCase();
     if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
@@ -157,6 +189,11 @@ app.get("/explorer", async (req, res) => {
             const filePath = path.join(fullPath, file.name);
             const stat = await fs.promises.stat(filePath);
 
+            // ดึงข้อมูล uploader จากฐานข้อมูล MongoDB
+            const uploader = file.isDirectory()
+              ? null
+              : await getUploader(file.name);
+
             return {
               name: file.name,
               type: file.isDirectory() ? "folder" : "file",
@@ -166,6 +203,7 @@ app.get("/explorer", async (req, res) => {
               path: path.join(requestedPath, file.name),
               modified: stat.mtime,
               size: file.isDirectory() ? null : stat.size,
+              uploader, // เพิ่มข้อมูล uploader
             };
           })
         );
@@ -181,6 +219,23 @@ app.get("/explorer", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+const getUploader = async (filename) => {
+  try {
+    // หา uploaderId จากฐานข้อมูล (กรณีนี้จะต้องมีการเก็บ uploaderId ในไฟล์ที่ถูกอัปโหลด)
+    const file = await Upload.findOne({ filename });
+
+    if (!file || !file.uploaderId) return null;
+
+    // ใช้ uploaderId ไปหาข้อมูลผู้ใช้
+    const uploader = await User.findById(file.uploaderId).select("email name");
+
+    return uploader ? { email: uploader.email, name: uploader.name } : null;
+  } catch (error) {
+    console.error("❌ Error getting uploader:", error);
+    return null;
+  }
+};
 
 const DEFAULT_LIMIT = 10;
 
@@ -263,16 +318,27 @@ const uploadMiddleware = multer({
   }),
 });
 
-app.post("/upload", uploadMiddleware.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
+app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
+  const uploaderId = req.user._id;
+  const filename = req.file.filename;
+  const filepath = req.file.path;
 
-  res.json({
-    message: "File uploaded successfully",
-    filename: req.file.originalname,
-    path: req.file.path,
-  });
+  try {
+    // ใช้ Upload model เพื่อบันทึกข้อมูลลงใน MongoDB
+    const newUpload = new Upload({
+      filename,
+      path: filepath,
+      uploaderId,
+    });
+
+    await newUpload.save();
+
+    res.status(200).json({ message: "Upload complete" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Error uploading file", details: error.message });
+  }
 });
 const fsPromises = require("fs").promises;
 
@@ -370,7 +436,6 @@ app.get("/search", async (req, res) => {
 
   const results = [];
 
-  // Recursive walk
   async function walk(dir, relativePath = "") {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
@@ -444,26 +509,29 @@ app.post("/create-folder", async (req, res) => {
   }
 });
 
-const fetchGAReport = async (Granularity = "daily") => {
+const cacheGADataMap = {};
+
+async function fetchGAReport(granularity = "daily") {
   try {
     const auth = new google.auth.GoogleAuth({
-      keyFile: "./src/credentials/abiding-ion-453707-v2-8d672386f50c.json",
+      keyFile: "../credentials/abiding-ion-453707-v2-8d672386f50c.json",
       scopes: "https://www.googleapis.com/auth/analytics.readonly",
     });
 
     const analyticsData = google.analyticsdata("v1beta");
     const authClient = await auth.getClient();
     google.options({ auth: authClient });
+
     let dimensionName;
     let startDate;
 
-    switch (Granularity) {
+    switch (granularity) {
       case "monthly":
         dimensionName = "month";
         startDate = "90daysAgo";
         break;
       case "weekly":
-        dimensionName = "week";
+        dimensionName = "date";
         startDate = "28daysAgo";
         break;
       case "daily":
@@ -481,31 +549,98 @@ const fetchGAReport = async (Granularity = "daily") => {
         metrics: [{ name: "screenPageViews" }],
       },
     });
+
     return response.data;
   } catch (error) {
     console.error("GA API error:", error);
+    throw error;
   }
-};
-app.get("/ga4-report", async (req, res) => {
-  const { granularity = "daily" } = req.query;
+}
 
-  if (cacheGAData) {
-    return res.json(cacheGAData);
+app.get("/ga4-report", async (req, res) => {
+  const granularity = req.query.granularity || "daily";
+
+  if (cacheGADataMap[granularity]) {
+    return res.json(cacheGADataMap[granularity]);
   }
 
   try {
     const data = await fetchGAReport(granularity);
-    cacheGAData = data;
+    cacheGADataMap[granularity] = data;
     res.json(data);
   } catch (error) {
     console.error("GA Report error:", error);
     res.status(500).json({ error: "Failed to fetch GA report" });
   }
 });
+app.get("/ga4-engagement", async (req, res) => {
+  try {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: "./src/credentials/abiding-ion-453707-v2-8d672386f50c.json",
+      scopes: "https://www.googleapis.com/auth/analytics.readonly",
+    });
+
+    const analyticsData = google.analyticsdata("v1beta");
+    const authClient = await auth.getClient();
+    google.options({ auth: authClient });
+
+    const response = await analyticsData.properties.runReport({
+      property: "properties/434121266", // เปลี่ยนเป็น property ID ของคุณ
+      requestBody: {
+        dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
+        dimensions: [{ name: "date" }],
+        metrics: [
+          { name: "engagedSessions" },
+          { name: "averageSessionDuration" },
+          { name: "engagementRate" },
+        ],
+      },
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error("GA API error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 app.get("/file", (req, res) => {
   const filePath = req.query.path;
   const fullFilePath = path.join(baseUploadPath, filePath);
   res.sendFile(fullFilePath);
+});
+
+app.post("/email-accounts", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const { email, password, host, port, tls, folder } = req.body;
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Create new Email Account
+    const newEmailAccount = new EmailAccountModel({
+      user: userId,
+      email,
+      password: hashedPassword,
+      host,
+      port,
+      folder,
+      tls,
+    });
+
+    // Save to DB
+    await newEmailAccount.save();
+
+    // Return a successful response
+    res.status(201).json({
+      message: "Email account created successfully",
+      accountId: newEmailAccount._id,
+    });
+  } catch (error) {
+    console.error("Create Email Account Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.listen(PORT, () => {

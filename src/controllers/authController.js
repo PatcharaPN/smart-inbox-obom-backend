@@ -2,7 +2,14 @@ const bcrypt = require("bcryptjs");
 
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
-const { generateAccessToken, generateRefreshToken } = require("../utils/jwt");
+
+const getTokenFromHeader = (req) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.split(" ")[1];
+  }
+  return null;
+};
 
 exports.register = async (req, res) => {
   const {
@@ -67,18 +74,14 @@ exports.register = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  console.log("✅ LOGIN CONTROLLER HIT");
   const { email, password } = req.body;
   try {
-    // 1. Find user by email
     const user = await User.findOne({ email });
     if (!user)
       return res.status(401).json({
         status: "error",
         message: "Invalid email or password",
       });
-
-    // 2. Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch)
       return res.status(401).json({
@@ -86,40 +89,27 @@ exports.login = async (req, res) => {
         message: "Invalid email or password",
       });
 
-    // 3. Generate tokens
-    const payload = { id: user._id, email: user.email, role: user.role };
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
-
-    // 4. Clean sensitive data before response
     const userData = user.toObject();
     delete userData.password;
 
-    // 5. Set HttpOnly cookies
-    res
-      .cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: false,
-        // secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
-        maxAge: 15 * 60 * 1000, // 15 นาที
-      })
-      .cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: false,
-        // secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 วัน
-      })
-      .status(200)
-      .json({
-        status: "success",
-        message: "User logged in successfullyss",
-        data: {
-          user: userData,
-          role: user.role,
-        },
-      });
+    const token = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "User logged in successfully",
+      data: {
+        user: userData,
+        token,
+      },
+    });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({
@@ -176,48 +166,49 @@ exports.getUser = async (req, res) => {
   }
 };
 
-exports.refresh = (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
-  if (!refreshToken) return res.sendStatus(401);
+// exports.refresh = (req, res) => {
+//   const refreshToken = req.cookies.refreshToken;
+//   if (!refreshToken) return res.sendStatus(401);
 
-  jwt.verify(refreshToken, process.env.REFRESH_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+//   jwt.verify(refreshToken, process.env.REFRESH_SECRET, (err, user) => {
+//     if (err) return res.sendStatus(403);
 
-    const accessToken = generateAccessToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
+//     const accessToken = generateAccessToken({
+//       id: user.id,
+//       email: user.email,
+//       role: user.role,
+//     });
 
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "Strict",
-      maxAge: 15 * 60 * 1000,
-    });
+//     res.cookie("accessToken", accessToken, {
+//       httpOnly: true,
+//       secure: false,
+//       sameSite: "Lax",
+//       maxAge: 15 * 60 * 1000,
+//     });
 
-    res.status(200).json({ message: "Token refreshed" });
-  });
-};
-exports.logout = (req, res) => {
-  res
-    .clearCookie("accessToken", { httpOnly: true, sameSite: "Strict" })
-    .clearCookie("refreshToken", { httpOnly: true, sameSite: "Strict" })
-    .status(200)
-    .json({ status: "success", message: "Logged out successfully" });
-};
+//     res.status(200).json({ message: "Token refreshed" });
+//   });
+// };
+// exports.logout = (req, res) => {
+//   res
+//     .clearCookie("accessToken", { httpOnly: true, sameSite: "Strict" })
+//     .clearCookie("refreshToken", { httpOnly: true, sameSite: "Strict" })
+//     .status(200)
+//     .json({ status: "success", message: "Logged out successfully" });
+// };
 
 exports.getUserProfile = async (req, res) => {
   try {
-    const token = req.cookies.accessToken;
-    if (!token) {
-      return res.status(401).json({ message: "No token provided" });
-    }
+    const token = getTokenFromHeader(req);
+    if (!token)
+      return res.status(401).json({
+        message: "No token Provided",
+      });
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.id;
 
     const user = await User.findById(userId);
-
     if (!user) {
       return res
         .status(404)
@@ -239,11 +230,7 @@ exports.getUserProfile = async (req, res) => {
 
 exports.editUserByCredential = async (req, res) => {
   try {
-    let token = req.cookies.accessToken;
-
-    if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-      token = req.headers.authorization.split(" ")[1];
-    }
+    const token = getTokenFromHeader(req);
     if (!token) return res.status(401).json({ message: "No token provided" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -253,9 +240,7 @@ exports.editUserByCredential = async (req, res) => {
       new: true,
     });
     if (!updatedUser) {
-      res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
     const userOBJ = updatedUser.toObject();
     delete userOBJ.password;
@@ -301,28 +286,24 @@ exports.getUserById = async (req, res) => {
 };
 exports.uploadProfilePic = async (req, res) => {
   try {
-    let token = req.cookies.accessToken;
-    if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-      token = req.headers.authorization.split(" ")[1];
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "No token provided" });
     }
-    if (!token)
-      return res.status(401).json({
-        message: "No token Provided",
-      });
+
+    const token = authHeader.split(" ")[1];
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.id;
 
     const user = await User.findById(userId);
-    if (!user)
-      return res.status(404).json({
-        message: "User not found",
-      });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     const profilePath = req.file?.path.replace(/\\/g, "/");
 
     user.profilePic = profilePath;
-
     await user.save();
 
     const userData = user.toObject();

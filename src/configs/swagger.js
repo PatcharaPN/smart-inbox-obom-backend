@@ -12,7 +12,7 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:3000", // เปลี่ยนเป็น URL จริงตอน Deploy
+        url: "https://5944-125-25-17-122.ngrok-free.app/", // เปลี่ยนเป็น URL จริงตอน Deploy
       },
     ],
   },

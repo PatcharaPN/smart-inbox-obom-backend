@@ -1,12 +1,28 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/userModel");
 
-module.exports = function authMiddleware(req, res, next) {
-  const token = req.cookies.accessToken;
-  if (!token) return res.sendStatus(401);
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  // const token = req.headers.authorization?.split(" ")[1];
+  console.log(token);
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
-  jwt.verify(token, process.env.ACCESS_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
     req.user = user;
     next();
-  });
+  } catch (error) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
 };
+
+module.exports = authMiddleware;

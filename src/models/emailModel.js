@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const EmailSchema = new mongoose.Schema(
   {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      require: true,
+    },
     messageId: { type: String, unique: true, sparse: true },
     from: { type: String, required: true },
     subject: { type: String },
@@ -12,7 +17,7 @@ const EmailSchema = new mongoose.Schema(
     bcc: { type: String },
     html: { type: String },
     size: { type: String },
-    folder:{type:String},
+    folder: { type: String },
     attachments: [
       {
         filename: String,
