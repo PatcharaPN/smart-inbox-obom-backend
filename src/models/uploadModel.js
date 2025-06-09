@@ -9,8 +9,18 @@ const uploadSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    deleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: Date,
     uploadedAt: { type: Date, default: Date.now },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
+
   { timestamps: true }
 );
 

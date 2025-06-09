@@ -15,6 +15,7 @@ dist-ssr
 src/attachments/
 attachments
 Uploads
+Uploads-backup
 uploads
 # Editor directories and files
 .vscode/*

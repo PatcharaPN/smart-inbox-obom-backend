@@ -13,11 +13,13 @@ const getTokenFromHeader = (req) => {
 
 exports.register = async (req, res) => {
   const {
+    id,
     username,
     email,
     password,
     role,
     name,
+    categories,
     surname,
     phoneNumber,
     isAdmin,
@@ -34,10 +36,12 @@ exports.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       username,
+      id,
       email,
       role,
       name,
       surname,
+      categories,
       phoneNumber,
       isAdmin,
       password: hashedPassword,
@@ -319,6 +323,20 @@ exports.uploadProfilePic = async (req, res) => {
       status: "error",
       message: "Error uploading profile picture",
       error: error.message,
+    });
+  }
+};
+
+exports.getUsers = async (req, res) => {
+  try {
+    const user = await User.find();
+
+    res.status(200).json({
+      data: user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An Internal Server Error",
     });
   }
 };

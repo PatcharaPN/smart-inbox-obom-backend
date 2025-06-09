@@ -31,7 +31,12 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: "*",
+    origin: [
+      "http://database.obomgauge.com",
+      "http://localhost:5173",
+      "http://100.127.64.22",
+      "http://100.127.64.22/Setting/account",
+    ],
     methods: ["GET", "DELETE", "POST", "PUT"],
     credentials: true,
   })
@@ -67,10 +72,15 @@ if (!fs.existsSync(uploadPath)) {
 connectDB();
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const targetPath = req.body.targetPath || "Uploads";
-    const fullPath = path.join(__dirname, targetPath);
-    fs.mkdirSync(fullPath, { recursive: true });
-    cb(null, fullPath);
+    const targetPath = req.query.targetPath || "Uploads";
+    const uploadDir = path.join(__dirname, targetPath);
+
+    if (!uploadDir.startsWith(path.join(__dirname, "Uploads"))) {
+      return cb(new Error("Invalid upload path"));
+    }
+
+    fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
@@ -155,12 +165,11 @@ app.get("/fetch-new", FetchNewEmails);
  */
 const BASE_DIR = path.join(__dirname, "uploads");
 
-app.get("/explorer", async (req, res) => {
+app.get("/explorer", authMiddleware, async (req, res) => {
   const requestedPaths = req.query.paths
     ? req.query.paths.split(",")
     : ["Uploads"];
 
-  // ฟังก์ชันในการตรวจสอบประเภทของไฟล์
   const getFileCategory = (filename) => {
     const ext = path.extname(filename).toLowerCase();
     if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
@@ -189,10 +198,9 @@ app.get("/explorer", async (req, res) => {
             const filePath = path.join(fullPath, file.name);
             const stat = await fs.promises.stat(filePath);
 
-            // ดึงข้อมูล uploader จากฐานข้อมูล MongoDB
-            const uploader = file.isDirectory()
+            const uploaderDoc = file.isDirectory()
               ? null
-              : await getUploader(file.name);
+              : await getUploader(file.name); // ปรับให้คืนทั้ง doc
 
             return {
               name: file.name,
@@ -200,20 +208,19 @@ app.get("/explorer", async (req, res) => {
               category: file.isDirectory()
                 ? "Folder"
                 : getFileCategory(file.name),
-              path: path.join(requestedPath, file.name),
+              path: path.posix.join(requestedPath, file.name),
+              fullPath: path.join(fullPath, file.name),
               modified: stat.mtime,
               size: file.isDirectory() ? null : stat.size,
-              uploader, // เพิ่มข้อมูล uploader
+              uploader: uploaderDoc?.name ?? null,
+              uploaderId: uploaderDoc?._id ?? null,
             };
           })
         );
       })
     );
 
-    // รวมไฟล์ทั้งหมดจากหลาย directory เป็น array เดียว
-    const mergedResults = allResults.flat();
-
-    res.json(mergedResults);
+    res.json(allResults.flat());
   } catch (err) {
     console.error("❌ Error reading directories:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -222,12 +229,10 @@ app.get("/explorer", async (req, res) => {
 
 const getUploader = async (filename) => {
   try {
-    // หา uploaderId จากฐานข้อมูล (กรณีนี้จะต้องมีการเก็บ uploaderId ในไฟล์ที่ถูกอัปโหลด)
     const file = await Upload.findOne({ filename });
 
     if (!file || !file.uploaderId) return null;
 
-    // ใช้ uploaderId ไปหาข้อมูลผู้ใช้
     const uploader = await User.findById(file.uploaderId).select("email name");
 
     return uploader ? { email: uploader.email, name: uploader.name } : null;
@@ -304,19 +309,19 @@ app.get("/recent-files", async (req, res) => {
   }
 });
 
-const uploadMiddleware = multer({
-  storage: multer.diskStorage({
-    destination: function (req, file, cb) {
-      const targetPath = req.query.targetPath || "Uploads";
-      const uploadPath = path.join(__dirname, targetPath);
-      fs.mkdirSync(uploadPath, { recursive: true });
-      cb(null, uploadPath);
-    },
-    filename: function (req, file, cb) {
-      cb(null, file.originalname);
-    },
-  }),
-});
+// const uploadMiddleware = multer({
+//   storage: multer.diskStorage({
+//     destination: function (req, file, cb) {
+//       const targetPath = req.query.targetPath || "Uploads";
+//       const uploadPath = path.join(__dirname, targetPath);
+//       fs.mkdirSync(uploadPath, { recursive: true });
+//       cb(null, uploadPath);
+//     },
+//     filename: function (req, file, cb) {
+//       cb(null, file.originalname);
+//     },
+//   }),
+// });
 
 app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
   const uploaderId = req.user._id;
@@ -342,14 +347,45 @@ app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
 });
 const fsPromises = require("fs").promises;
 
-app.delete("/delete", async (req, res) => {
+app.delete("/delete", authMiddleware, async (req, res) => {
   try {
+    const userId = req.user._id;
     let targetPath = req.query.path;
+
     if (!targetPath) {
       return res.status(400).json({ error: "No path specified" });
     }
+    const fullFilePath = path.join(__dirname, targetPath);
+    // ดึงข้อมูลไฟล์จาก DB
+    const fileDoc = await Upload.findOne({ path: fullFilePath });
 
-    // ถ้ามีคำว่า "Uploads/" ข้างหน้าให้ตัดออก
+    if (!fileDoc) {
+      return res.status(404).json({
+        message: `File with path ${targetPath} was not found`,
+      });
+    }
+
+    // ✅ ตรวจสอบสิทธิ์การลบ
+    if (
+      String(fileDoc.uploaderId) !== String(userId) &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ error: "Permission denied" });
+    }
+
+    // 👇 เก็บ log การลบก่อน
+    await Upload.updateOne(
+      { _id: fileDoc._id },
+      {
+        $set: {
+          deleted: true,
+          deletedAt: new Date(),
+          deletedBy: req.user._id,
+        },
+      }
+    );
+
+    // 🔒 Sanitize path ก่อนลบไฟล์จริง
     if (targetPath.startsWith("Uploads/")) {
       targetPath = targetPath.slice("Uploads/".length);
     }
@@ -359,7 +395,7 @@ app.delete("/delete", async (req, res) => {
       .replace(/^(\.\.(\/|\\|$))+/, "");
     const fullPath = path.join(__dirname, "Uploads", sanitizedPath);
 
-    console.log("Deleting path:", fullPath); // debug
+    console.log("Deleting path:", fullPath);
 
     const stats = await fsPromises.stat(fullPath);
 
@@ -378,6 +414,7 @@ app.delete("/delete", async (req, res) => {
     return res.status(500).json({ error: "Failed to delete" });
   }
 });
+
 app.get("/filter-by-date", async (req, res) => {
   const { startDate, endDate, limit = 20, page = 1 } = req.query;
 
@@ -477,9 +514,10 @@ app.get("/search", async (req, res) => {
   }
 });
 
-app.post("/create-folder", async (req, res) => {
+app.post("/create-folder", authMiddleware, async (req, res) => {
   const filePath = req.query.path || "Uploads";
   const folderName = req.query.foldername;
+  const uploaderId = req.user?._id;
   if (!folderName || folderName.trim() === "") {
     return res.status(500).json({
       error: "Folder name must be named",
@@ -498,7 +536,13 @@ app.post("/create-folder", async (req, res) => {
       });
     }
     await fs.promises.mkdir(fullPath, { recursive: true });
-
+    await Upload.create({
+      filename: folderName,
+      path: fullPath,
+      uploaderId: uploaderId ?? null,
+      uploadedAt: new Date(),
+      deleted: false,
+    });
     res.status(201).json({
       message: "📁 Folder created successfully",
       path: path.join(sanitizedPath, folderName),
@@ -611,14 +655,24 @@ app.get("/file", (req, res) => {
 
 app.post("/email-accounts", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.body.userId; // เปลี่ยนจาก req.user._id เป็น req.body.userId เพราะ front ส่ง userId มาเลือก
 
     const { email, password, host, port, tls, folder } = req.body;
+
+    // เช็คว่าบัญชีอีเมลนี้ผูกกับ userId นี้อยู่แล้วหรือยัง
+    const existingAccount = await EmailAccountModel.findOne({
+      user: userId,
+      email,
+    });
+    if (existingAccount) {
+      return res
+        .status(400)
+        .json({ error: "ผู้ใช้รายนี้ผูกบัญชีอีเมลนี้อยู่แล้ว" });
+    }
 
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create new Email Account
     const newEmailAccount = new EmailAccountModel({
       user: userId,
       email,
@@ -629,10 +683,8 @@ app.post("/email-accounts", authMiddleware, async (req, res) => {
       tls,
     });
 
-    // Save to DB
     await newEmailAccount.save();
 
-    // Return a successful response
     res.status(201).json({
       message: "Email account created successfully",
       accountId: newEmailAccount._id,
