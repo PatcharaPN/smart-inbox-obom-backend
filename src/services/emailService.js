@@ -4,20 +4,24 @@ const fs = require("fs");
 const path = require("path");
 const EmailModel = require("../models/emailModel");
 const EmailAccount = require("../models/emailAccounts");
-const attachmentsDir = path.join(__dirname, "../../attachments/Purchase");
-if (!fs.existsSync(attachmentsDir)) {
-  fs.mkdirSync(attachmentsDir, { recursive: true });
-  console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
-}
 
-const foldersToFetch = ["INBOX", "Sent", "Trash"];
+const emailService = async ({
+  userId,
+  startDate,
+  endDate,
+  folders,
+  department,
+}) => {
+  const foldersToFetch =
+    folders && folders.length > 0 ? folders : ["INBOX", "Sent", "Trash"];
 
-const emailService = async (userId) => {
   try {
     // Fetch the email account associated with the user
     const emailAccount = await EmailAccount.findOne({ user: userId });
     console.log(emailAccount.email);
     console.log(emailAccount.password);
+
+    console.log(department);
 
     console.log(emailAccount.host);
     console.log(emailAccount.port);
@@ -26,6 +30,14 @@ const emailService = async (userId) => {
     if (!emailAccount) {
       console.error("❌ No email account found for this user");
       return;
+    }
+    const attachmentsDir = path.join(
+      __dirname,
+      `../../attachments/${department || "DefaultFolder"}`
+    );
+    if (!fs.existsSync(attachmentsDir)) {
+      fs.mkdirSync(attachmentsDir, { recursive: true });
+      console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
     }
 
     const { email, password, host, port, tls } = emailAccount;
@@ -53,8 +65,8 @@ const emailService = async (userId) => {
 
             imap.search(
               [
-                ["SINCE", "3-Jun-2025"],
-                ["BEFORE", "4-Jun-2025"],
+                ["SINCE", startDate],
+                ["BEFORE", endDate],
               ],
               async function (err, results) {
                 if (err || !results || results.length === 0) {
@@ -171,7 +183,12 @@ const emailService = async (userId) => {
 
                                 // ✅ Save the file
                                 const relativePath = path
-                                  .join(folder, folderName, subfolder, filename)
+                                  .join(
+                                    department,
+                                    folderName,
+                                    subfolder,
+                                    filename
+                                  )
                                   .replace(/\\/g, "/");
 
                                 // ✅ Save the attachment to the disk

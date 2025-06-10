@@ -5,21 +5,28 @@ const connectDB = require("../middlewares/connectDB");
 const path = require("path");
 const EmailModel = require("../models/emailModel");
 
-const attachmentsDir = path.join(__dirname, "../../attachments/Purchase");
-if (!fs.existsSync(attachmentsDir)) {
-  fs.mkdirSync(attachmentsDir, { recursive: true });
-  console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
-}
-
 // ระบุโฟลเดอร์ที่จะดึงอีเมล
 const foldersToFetch = ["INBOX", "Sent", "Trash"];
 
-const fetchNewEmails = () => {
+const fetchNewEmails = ({
+  userId,
+  startDate,
+  endDate,
+  folders,
+  department,
+}) => {
   const today = new Date();
+  const attachmentsDir = path.join(
+    __dirname,
+    `../../attachments/${department || "DefaultFolder"}`
+  );
+  if (!fs.existsSync(attachmentsDir)) {
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+    console.log(`✅ Created 'attachments' directory at ${attachmentsDir}`);
+  }
 
-  // กำหนดวันที่ที่จะดึงอีเมล (วันนี้)
   const since = new Date(today);
-  since.setDate(today.getDate() - 1); // ตั้งให้ 'SINCE' เป็นวันเมื่อวาน
+  since.setDate(today.getDate() - 1);
 
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);

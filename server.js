@@ -26,9 +26,6 @@ const {
 } = require("./src/controllers/emailController");
 const EmailModel = require("./src/models/emailModel");
 const EmailAccountModel = require("./src/models/emailAccounts");
-
-app.use(express.json());
-
 app.use(
   cors({
     origin: [
@@ -41,6 +38,8 @@ app.use(
     credentials: true,
   })
 );
+app.use(express.json());
+
 // const allowedOrigins = [
 //   "http://localhost:5173",
 //   "https://5944-125-25-17-122.ngrok-free.app",
@@ -87,10 +86,10 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
-const job = new CronJob("0 8 * * *", () => {
-  fetchNewEmails();
-});
-job.start();
+// const job = new CronJob("0 8 * * *", () => {
+//   fetchNewEmails();
+// });
+// job.start();
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
@@ -114,15 +113,52 @@ app.use("/attachments", express.static(path.join(__dirname, "attachments")));
  *       200:
  *         description: A list of Emails
  */
-app.post("/fetch-email", (req, res) => {
-  const { userId } = req.query;
+
+app.get("/fetch-new", authMiddleware, async (req, res) => {
+  let department;
+  const { folders } = req.body;
+  const userId = req.user._id;
+  department = req.user.role;
   if (!userId) {
     return res.status(400).json({
       error: "User ID is required",
     });
   }
   try {
-    emailService(userId);
+    fetchNewEmails({
+      userId,
+      folders,
+      department,
+    });
+
+    res.status(200).json({ message: "📬 Fetching latest email..." });
+  } catch (err) {
+    console.error("❌ Failed to fetch email:", err);
+    res.status(500).json({ error: "Failed to fetch email" });
+  }
+});
+
+app.post("/fetch-email", authMiddleware, (req, res) => {
+  let department;
+  const { startDate, endDate, folders } = req.body;
+  const userId = req.user._id;
+  department = req.user.role;
+  console.log("Req", startDate, endDate, folders);
+
+  if (!userId) {
+    return res.status(400).json({
+      error: "User ID is required",
+    });
+  }
+  try {
+    emailService({
+      userId,
+      startDate,
+      endDate,
+      folders,
+      department,
+    });
+
     res.status(200).json({ message: "📬 Fetching latest email..." });
   } catch (err) {
     console.error("❌ Failed to fetch email:", err);
@@ -152,7 +188,6 @@ app.get("/emails", FetchEmail);
  *         description: A list of Emails
  */
 app.get("/fetch-emails", FetchEmails);
-app.get("/fetch-new", FetchNewEmails);
 
 /**
  * @swagger
@@ -165,82 +200,101 @@ app.get("/fetch-new", FetchNewEmails);
  */
 const BASE_DIR = path.join(__dirname, "uploads");
 
+const getFileCategory = (filename) => {
+  const ext = path.extname(filename).toLowerCase();
+  if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
+    return "รูปภาพ";
+  if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext)) return "วิดีโอ";
+  if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "ไฟล์เสียง";
+  if ([".pdf"].includes(ext)) return "pdf";
+  if ([".txt", ".md", ".log"].includes(ext)) return "ไฟล์อักษร";
+  if ([".doc", ".docx"].includes(ext)) return "word";
+  if ([".xls", ".xlsx"].includes(ext)) return "excel";
+  if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
+  return "ไฟล์";
+};
+
 app.get("/explorer", authMiddleware, async (req, res) => {
   const requestedPaths = req.query.paths
     ? req.query.paths.split(",")
     : ["Uploads"];
 
-  const getFileCategory = (filename) => {
-    const ext = path.extname(filename).toLowerCase();
-    if ([".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext))
-      return "รูปภาพ";
-    if ([".mp4", ".avi", ".mkv", ".mov", ".webm"].includes(ext))
-      return "วิดีโอ";
-    if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) return "ไฟล์เสียง";
-    if ([".pdf"].includes(ext)) return "pdf";
-    if ([".txt", ".md", ".log"].includes(ext)) return "ไฟล์อักษร";
-    if ([".doc", ".docx"].includes(ext)) return "word";
-    if ([".xls", ".xlsx"].includes(ext)) return "excel";
-    if ([".zip", ".rar", ".7z", ".tar", ".gz"].includes(ext)) return "archive";
-    return "ไฟล์";
-  };
-
   try {
-    const allResults = await Promise.all(
-      requestedPaths.map(async (requestedPath) => {
-        const fullPath = path.join(__dirname, requestedPath);
-        const files = await fs.promises.readdir(fullPath, {
-          withFileTypes: true,
+    const allResults = [];
+
+    for (const requestedPath of requestedPaths) {
+      const fullPath = path.join(__dirname, requestedPath);
+      const files = await fs.promises.readdir(fullPath, {
+        withFileTypes: true,
+      });
+
+      const filePaths = files.map((file) =>
+        path.posix.join(requestedPath, file.name)
+      );
+
+      const uploads = await Upload.find({
+        path: { $in: filePaths },
+        deleted: false,
+      }).lean();
+
+      const uploadMap = new Map(uploads.map((u) => [u.path, u]));
+
+      const uploaderIds = [
+        ...new Set(
+          uploads.map((u) => u.uploaderId?.toString()).filter(Boolean)
+        ),
+      ];
+      const users = await User.find({ _id: { $in: uploaderIds } }).lean();
+      const userMap = new Map(users.map((u) => [u._id.toString(), u.username]));
+
+      for (const file of files) {
+        const filePath = path.posix.join(requestedPath, file.name);
+        const stat = await fs.promises.stat(path.join(fullPath, file.name));
+
+        let uploader = null;
+        let uploaderId = null;
+
+        const uploadDoc = uploadMap.get(filePath);
+        if (uploadDoc) {
+          uploaderId = uploadDoc.uploaderId?.toString() ?? null;
+          uploader = uploaderId ? userMap.get(uploaderId) ?? null : null;
+        }
+
+        allResults.push({
+          name: file.name,
+          type: file.isDirectory() ? "folder" : "file",
+          category: file.isDirectory() ? "Folder" : getFileCategory(file.name),
+          path: filePath,
+          fullPath: path.join(fullPath, file.name),
+          modified: stat.mtime,
+          size: file.isDirectory() ? null : stat.size,
+          uploader,
+          uploaderId,
         });
+      }
+    }
 
-        return Promise.all(
-          files.map(async (file) => {
-            const filePath = path.join(fullPath, file.name);
-            const stat = await fs.promises.stat(filePath);
-
-            const uploaderDoc = file.isDirectory()
-              ? null
-              : await getUploader(file.name); // ปรับให้คืนทั้ง doc
-
-            return {
-              name: file.name,
-              type: file.isDirectory() ? "folder" : "file",
-              category: file.isDirectory()
-                ? "Folder"
-                : getFileCategory(file.name),
-              path: path.posix.join(requestedPath, file.name),
-              fullPath: path.join(fullPath, file.name),
-              modified: stat.mtime,
-              size: file.isDirectory() ? null : stat.size,
-              uploader: uploaderDoc?.name ?? null,
-              uploaderId: uploaderDoc?._id ?? null,
-            };
-          })
-        );
-      })
-    );
-
-    res.json(allResults.flat());
-  } catch (err) {
-    console.error("❌ Error reading directories:", err);
+    res.json(allResults);
+  } catch (error) {
+    console.error("❌ Error reading directories:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-const getUploader = async (filename) => {
-  try {
-    const file = await Upload.findOne({ filename });
+// const getUploader = async (filename) => {
+//   try {
+//     const file = await Upload.findOne({ filename });
 
-    if (!file || !file.uploaderId) return null;
+//     if (!file || !file.uploaderId) return null;
 
-    const uploader = await User.findById(file.uploaderId).select("email name");
+//     const uploader = await User.findById(file.uploaderId).select("email name");
 
-    return uploader ? { email: uploader.email, name: uploader.name } : null;
-  } catch (error) {
-    console.error("❌ Error getting uploader:", error);
-    return null;
-  }
-};
+//     return uploader ? { email: uploader.email, name: uploader.name } : null;
+//   } catch (error) {
+//     console.error("❌ Error getting uploader:", error);
+//     return null;
+//   }
+// };
 
 const DEFAULT_LIMIT = 10;
 
@@ -326,14 +380,19 @@ app.get("/recent-files", async (req, res) => {
 app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
   const uploaderId = req.user._id;
   const filename = req.file.filename;
-  const filepath = req.file.path;
+
+  // เก็บ path แบบ relative เช่น "Uploads/xxx.txt"
+  const relativePath = path
+    .relative(__dirname, req.file.path)
+    .replace(/\\/g, "/");
 
   try {
-    // ใช้ Upload model เพื่อบันทึกข้อมูลลงใน MongoDB
     const newUpload = new Upload({
       filename,
-      path: filepath,
+      path: relativePath, // ✅ ไม่ใช้ req.file.path ตรงๆ
       uploaderId,
+      uploadedAt: new Date(),
+      deleted: false,
     });
 
     await newUpload.save();
@@ -345,6 +404,7 @@ app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
       .json({ error: "Error uploading file", details: error.message });
   }
 });
+
 const fsPromises = require("fs").promises;
 
 app.delete("/delete", authMiddleware, async (req, res) => {
@@ -355,9 +415,9 @@ app.delete("/delete", authMiddleware, async (req, res) => {
     if (!targetPath) {
       return res.status(400).json({ error: "No path specified" });
     }
-    const fullFilePath = path.join(__dirname, targetPath);
-    // ดึงข้อมูลไฟล์จาก DB
-    const fileDoc = await Upload.findOne({ path: fullFilePath });
+
+    // **แก้ตรงนี้**: ค้นหาใน DB ด้วย targetPath ตรง ๆ (สมมติ DB เก็บ relative path)
+    const fileDoc = await Upload.findOne({ path: targetPath });
 
     if (!fileDoc) {
       return res.status(404).json({
@@ -365,7 +425,6 @@ app.delete("/delete", authMiddleware, async (req, res) => {
       });
     }
 
-    // ✅ ตรวจสอบสิทธิ์การลบ
     if (
       String(fileDoc.uploaderId) !== String(userId) &&
       req.user.role !== "admin"
@@ -373,7 +432,6 @@ app.delete("/delete", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Permission denied" });
     }
 
-    // 👇 เก็บ log การลบก่อน
     await Upload.updateOne(
       { _id: fileDoc._id },
       {
@@ -385,7 +443,7 @@ app.delete("/delete", authMiddleware, async (req, res) => {
       }
     );
 
-    // 🔒 Sanitize path ก่อนลบไฟล์จริง
+    // sanitize path ก่อนลบไฟล์จริง
     if (targetPath.startsWith("Uploads/")) {
       targetPath = targetPath.slice("Uploads/".length);
     }
@@ -518,34 +576,40 @@ app.post("/create-folder", authMiddleware, async (req, res) => {
   const filePath = req.query.path || "Uploads";
   const folderName = req.query.foldername;
   const uploaderId = req.user?._id;
+
   if (!folderName || folderName.trim() === "") {
-    return res.status(500).json({
+    return res.status(400).json({
       error: "Folder name must be named",
     });
   }
+
   try {
     const sanitizedPath = path
       .normalize(filePath)
       .replace(/^(\.\.(\/|\\|$))+/, "");
 
-    const fullPath = path.join(__dirname, sanitizedPath, folderName);
+    const relativePath = path.posix.join(sanitizedPath, folderName); // <-- ใช้อันนี้ในการบันทึก DB
+    const fullPath = path.join(__dirname, relativePath); // <-- สำหรับสร้างจริง
 
     if (fs.existsSync(fullPath)) {
       return res.status(400).json({
         error: "Folder already exists",
       });
     }
+
     await fs.promises.mkdir(fullPath, { recursive: true });
+
     await Upload.create({
       filename: folderName,
-      path: fullPath,
+      path: relativePath, // ✅ บันทึกเป็น relative path
       uploaderId: uploaderId ?? null,
       uploadedAt: new Date(),
       deleted: false,
     });
+
     res.status(201).json({
       message: "📁 Folder created successfully",
-      path: path.join(sanitizedPath, folderName),
+      path: relativePath, // ✅ ส่งกลับเป็น relative เช่นกัน
     });
   } catch (error) {
     console.error("❌ Error creating folder:", error);
