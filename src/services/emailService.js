@@ -28,8 +28,9 @@ const emailService = async ({
     console.log(emailAccount.tls);
 
     if (!emailAccount) {
-      console.error("❌ No email account found for this user");
-      return;
+      const error = new Error("ไม่สามารถซิงค์ข้อมูลได้ เพราะไม่มีข้อมูล IMAP");
+      error.code = "NO_IMAP";
+      throw error;
     }
     const attachmentsDir = path.join(
       __dirname,

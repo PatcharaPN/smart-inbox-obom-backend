@@ -114,36 +114,48 @@ app.use("/attachments", express.static(path.join(__dirname, "attachments")));
  *         description: A list of Emails
  */
 
-app.get("/fetch-new", authMiddleware, async (req, res) => {
-  let department;
+app.post("/fetch-new", authMiddleware, async (req, res) => {
   const { folders } = req.body;
   const userId = req.user._id;
-  department = req.user.role;
+  const department = req.user.role;
+
   if (!userId) {
     return res.status(400).json({
       error: "User ID is required",
     });
   }
+
   try {
-    fetchNewEmails({
+    await fetchNewEmails({
       userId,
       folders,
       department,
     });
 
-    res.status(200).json({ message: "📬 Fetching latest email..." });
-  } catch (err) {
-    console.error("❌ Failed to fetch email:", err);
-    res.status(500).json({ error: "Failed to fetch email" });
+    return res.status(200).json({ message: "📬 Fetching latest email..." });
+  } catch (error) {
+    if (error.code === "NO_IMAP") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "ไม่สามารถซิงค์ข้อมูลได้ เนื่องจากบัญชีไม่มีข้อมูล IMAP กรุณาติดต่อฝ่าย IT",
+      });
+    }
+
+    console.error("❌ Unexpected error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดบางอย่าง",
+    });
   }
 });
 
-app.post("/fetch-email", authMiddleware, (req, res) => {
+app.post("/fetch-email", authMiddleware, async (req, res) => {
   let department;
   const { startDate, endDate, folders } = req.body;
   const userId = req.user._id;
   department = req.user.role;
-  console.log("Req", startDate, endDate, folders);
+  console.log(req.body);
 
   if (!userId) {
     return res.status(400).json({
@@ -151,7 +163,7 @@ app.post("/fetch-email", authMiddleware, (req, res) => {
     });
   }
   try {
-    emailService({
+    await emailService({
       userId,
       startDate,
       endDate,
@@ -161,8 +173,19 @@ app.post("/fetch-email", authMiddleware, (req, res) => {
 
     res.status(200).json({ message: "📬 Fetching latest email..." });
   } catch (err) {
-    console.error("❌ Failed to fetch email:", err);
-    res.status(500).json({ error: "Failed to fetch email" });
+    if (err.code === "NO_IMAP") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "ไม่สามารถซิงค์ข้อมูลได้ เนื่องจากบัญชีไม่มีข้อมูล IMAP กรุณาติดต่อฝ่าย IT",
+      });
+    }
+
+    console.error("❌ Unexpected error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดบางอย่าง",
+    });
   }
 });
 app.get("/ram-usage", getDiskUsage.getRamUsage);

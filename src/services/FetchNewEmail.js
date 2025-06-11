@@ -4,17 +4,18 @@ const fs = require("fs");
 const connectDB = require("../middlewares/connectDB");
 const path = require("path");
 const EmailModel = require("../models/emailModel");
-
+const EmailAccount = require("../models/emailAccounts");
 // ระบุโฟลเดอร์ที่จะดึงอีเมล
 const foldersToFetch = ["INBOX", "Sent", "Trash"];
 
-const fetchNewEmails = ({
-  userId,
-  startDate,
-  endDate,
-  folders,
-  department,
-}) => {
+const fetchNewEmails = async ({ userId, department }) => {
+  const emailAccount = await EmailAccount.findOne({ user: userId });
+
+  if (!emailAccount) {
+    const error = new Error("ไม่สามารถซิงค์ข้อมูลได้ เพราะไม่มีข้อมูล IMAP");
+    error.code = "NO_IMAP";
+    throw error;
+  }
   const today = new Date();
   const attachmentsDir = path.join(
     __dirname,
@@ -48,13 +49,13 @@ const fetchNewEmails = ({
     .replace(/ /g, "-");
 
   console.log(`Fetching emails from: ${sinceFormatted} to ${before}`);
-
+  const { email, password, host, port, tls } = emailAccount;
   const imap = new Imap({
-    user: "salessupport@obomgauge.com",
-    password: "yzkH#x!yJ3",
-    host: "asia.hostneverdie.com",
-    port: 993,
-    tls: true,
+    user: email,
+    password: password,
+    host: host,
+    port: port || 993,
+    tls: tls || true,
     timeout: 30000,
     tlsOptions: { rejectUnauthorized: false },
   });

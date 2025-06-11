@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const connectDB = async () => {
   try {
     mongoose
-      .connect("mongodb://100.127.64.22:27017/", {
+      .connect("mongodb://100.127.64.22:27017/aio-obom", {
         useNewUrlParser: true,
         useUnifiedTopology: true,
       })
