@@ -13,27 +13,29 @@ const startSocketServer = (httpServer) => {
     },
   });
 
-  // เก็บ user id ที่ออนไลน์
-  const onlineUsers = new Set();
+  const userStatus = new Map();
 
   io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
-
     socket.on("user-online", (userId) => {
-      socket.userId = userId;
-      onlineUsers.add(userId);
-      io.emit("user-online", Array.from(onlineUsers));
+      userStatus.set(userId, "online");
+      io.emit("user-status-update", Object.fromEntries(userStatus));
+    });
+
+    socket.on("user-active", (userId) => {
+      userStatus.set(userId, "active");
+      io.emit("user-status-update", Object.fromEntries(userStatus));
+    });
+
+    socket.on("user-away", (userId) => {
+      userStatus.set(userId, "away");
+      io.emit("user-status-update", Object.fromEntries(userStatus));
     });
 
     socket.on("disconnect", () => {
       if (socket.userId) {
-        onlineUsers.delete(socket.userId);
-        io.emit("user-online", Array.from(onlineUsers));
+        userStatus.delete(socket.userId);
+        io.emit("user-status-update", Object.fromEntries(userStatus));
       }
-    });
-
-    socket.on("set-user-id", (userId) => {
-      socket.userId = userId;
     });
   });
 };

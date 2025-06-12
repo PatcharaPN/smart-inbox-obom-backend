@@ -136,6 +136,7 @@ const fetchNewEmails = async ({ userId, department }) => {
                           }
 
                           const emailData = {
+                            user: userId,
                             messageId,
                             folder,
                             from: email,

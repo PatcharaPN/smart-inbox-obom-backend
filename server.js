@@ -153,6 +153,48 @@ app.post("/fetch-new", authMiddleware, async (req, res) => {
     });
   }
 });
+app.post("/copy", authMiddleware, async (req, res) => {
+  const { sourcePath, targetFilename } = req.body;
+
+  if (!sourcePath || !targetFilename) {
+    return res
+      .status(400)
+      .json({ error: "Missing sourcePath or targetFilename" });
+  }
+
+  try {
+    const fileDoc = await Upload.findOne({ path: sourcePath });
+    if (!fileDoc)
+      return res.status(404).json({ error: "Source file not found" });
+
+    const sourceFullPath = path.join(__dirname, sourcePath);
+    const targetFullPath = path.join(
+      path.dirname(sourceFullPath),
+      targetFilename
+    );
+
+    await fsPromises.copyFile(sourceFullPath, targetFullPath);
+
+    const targetRelativePath = path
+      .relative(__dirname, targetFullPath)
+      .replace(/\\/g, "/");
+
+    const newUpload = new Upload({
+      filename: targetFilename,
+      path: targetRelativePath,
+      uploaderId: req.user._id,
+      uploadedAt: new Date(),
+      deleted: false,
+    });
+
+    await newUpload.save();
+
+    return res.json({ message: "File copied successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to copy file" });
+  }
+});
 
 app.post("/fetch-email", authMiddleware, async (req, res) => {
   let department;
@@ -433,6 +475,46 @@ app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
 });
 
 const fsPromises = require("fs").promises;
+app.post("/rename", authMiddleware, async (req, res) => {
+  const { oldPath, newFilename } = req.body;
+  console.log(oldPath, newFilename);
+
+  if (!oldPath || !newFilename) {
+    return res.status(400).json({ error: "Missing oldPath or newFilename" });
+  }
+
+  try {
+    const fileDoc = await Upload.findOne({ path: oldPath });
+    if (!fileDoc) return res.status(404).json({ error: "File not found" });
+
+    const userId = req.user._id;
+    if (
+      String(fileDoc.uploaderId) !== String(userId) &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ error: "Permission denied" });
+    }
+
+    const oldFullPath = path.join(__dirname, oldPath);
+    const newFullPath = path.join(path.dirname(oldFullPath), newFilename);
+
+    await fsPromises.rename(oldFullPath, newFullPath);
+
+    const newRelativePath = path
+      .relative(__dirname, newFullPath)
+      .replace(/\\/g, "/");
+
+    // อัปเดตใน MongoDB
+    fileDoc.filename = newFilename;
+    fileDoc.path = newRelativePath;
+    await fileDoc.save();
+
+    return res.json({ message: "File renamed successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to rename file" });
+  }
+});
 
 app.delete("/delete", authMiddleware, async (req, res) => {
   try {
