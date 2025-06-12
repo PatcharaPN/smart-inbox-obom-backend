@@ -23,6 +23,7 @@
     "express": "^5.1.0",
     "express-session": "^1.18.1",
     "googleapis": "^149.0.0",
+    "http": "^0.0.1-security",
     "imap": "^0.8.19",
     "jsonwebtoken": "^9.0.2",
     "mailparser": "^3.7.2",
@@ -31,6 +32,7 @@
     "node-cron": "^4.0.5",
     "nodemailer": "^7.0.3",
     "nodemon": "^3.1.10",
+    "socket.io": "^4.8.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   }

@@ -20,12 +20,15 @@ const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const Upload = require("./src/models/uploadModel");
 const FetchNewEmails = require("./src/services/FetchNewEmail");
+const http = require("http");
 const {
   FetchEmails,
   FetchEmail,
 } = require("./src/controllers/emailController");
 const EmailModel = require("./src/models/emailModel");
 const EmailAccountModel = require("./src/models/emailAccounts");
+const { startSocketServer } = require("./src/configs/socketio");
+
 app.use(
   cors({
     origin: [
@@ -38,8 +41,9 @@ app.use(
     credentials: true,
   })
 );
+const server = http.createServer(app);
 app.use(express.json());
-
+startSocketServer(server);
 // const allowedOrigins = [
 //   "http://localhost:5173",
 //   "https://5944-125-25-17-122.ngrok-free.app",
@@ -782,6 +786,6 @@ app.post("/email-accounts", authMiddleware, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
