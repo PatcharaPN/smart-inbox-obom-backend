@@ -1,3 +1,4 @@
+const { default: mongoose } = require("mongoose");
 const EmailModel = require("../models/emailModel");
 const Email = require("../models/emailModel");
 exports.FetchEmails = async (req, res) => {
@@ -133,7 +134,8 @@ exports.FetchEmail = async (req, res) => {
   }
 
   try {
-    const filter = { user: userId }; // กรองอีเมลที่สัมพันธ์กับผู้ใช้
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const filter = { user: userObjectId };
 
     if (selectedYear && selectedYear !== "all") {
       const startOfYear = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
@@ -161,12 +163,14 @@ exports.FetchEmail = async (req, res) => {
 
       const emails = await Email.find(filter).sort({ date: -1 }).limit(7);
 
-      const year = await Email.aggregate([
-        { $match: filter }, // เพิ่ม $match เพื่อกรองข้อมูลให้ตรงกับ user และเงื่อนไข
+      const Resultyear = await Email.aggregate([
+        { $match: { user: userObjectId } },
         { $project: { year: { $year: "$date" } } },
         { $group: { _id: "$year" } },
         { $sort: { _id: -1 } },
       ]);
+
+      const year = Resultyear.map((item) => item._id);
 
       return res.json({
         data: emails,
@@ -193,13 +197,13 @@ exports.FetchEmail = async (req, res) => {
 
     const total = await Email.countDocuments(filter);
 
-    const year = await Email.aggregate([
-      { $match: filter },
+    const yearResult = await Email.aggregate([
+      { $match: { user: userObjectId } },
       { $project: { year: { $year: "$date" } } },
       { $group: { _id: "$year" } },
       { $sort: { _id: -1 } },
     ]);
-
+    const year = yearResult.map((item) => item._id);
     res.json({
       data: emails,
       page,

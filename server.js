@@ -33,9 +33,9 @@ app.use(
   cors({
     origin: [
       "http://database.obomgauge.com",
+      "http://db.obomgauge.com",
       "http://localhost:5173",
       "http://100.127.64.22",
-      "http://100.127.64.22/Setting/account",
     ],
     methods: ["GET", "DELETE", "POST", "PUT"],
     credentials: true,
@@ -155,6 +155,7 @@ app.post("/fetch-new", authMiddleware, async (req, res) => {
 });
 app.post("/copy", authMiddleware, async (req, res) => {
   const { sourcePath, targetFilename } = req.body;
+  console.log(sourcePath, targetFilename);
 
   if (!sourcePath || !targetFilename) {
     return res
@@ -193,6 +194,43 @@ app.post("/copy", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to copy file" });
+  }
+});
+app.post("/paste", authMiddleware, async (req, res) => {
+  const { sourcePath, targetDir, newFilename } = req.body;
+
+  if (!sourcePath || !targetDir || !newFilename) {
+    return res.status(400).json({ error: "Missing parameters" });
+  }
+
+  try {
+    const fileDoc = await Upload.findOne({ path: sourcePath });
+    if (!fileDoc)
+      return res.status(404).json({ error: "Source file not found" });
+
+    const sourceFullPath = path.join(__dirname, sourcePath);
+    const targetFullPath = path.join(__dirname, targetDir, newFilename);
+
+    await fsPromises.copyFile(sourceFullPath, targetFullPath);
+
+    const targetRelativePath = path
+      .relative(__dirname, targetFullPath)
+      .replace(/\\/g, "/");
+
+    const newUpload = new Upload({
+      filename: newFilename,
+      path: targetRelativePath,
+      uploaderId: req.user._id,
+      uploadedAt: new Date(),
+      deleted: false,
+    });
+
+    await newUpload.save();
+
+    return res.json({ message: "File pasted successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to paste file" });
   }
 });
 
