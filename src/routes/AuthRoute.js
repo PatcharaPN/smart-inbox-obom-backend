@@ -8,9 +8,8 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = "./uploads/profilePics";
 
-    // ✅ Check if folder exists, if not, create it
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true }); // recursive = creates parent folders if needed
+      fs.mkdirSync(dir, { recursive: true });
     }
 
     cb(null, dir);

@@ -28,6 +28,8 @@ const {
 const EmailModel = require("./src/models/emailModel");
 const EmailAccountModel = require("./src/models/emailAccounts");
 const { startSocketServer } = require("./src/configs/socketio");
+const { getLoginHistory } = require("./src/controllers/loginHistoryController");
+const LoginHistory = require("./src/models/loginHistoryModel");
 
 app.use(
   cors({
@@ -197,43 +199,112 @@ app.post("/copy", authMiddleware, async (req, res) => {
   }
 });
 app.post("/paste", authMiddleware, async (req, res) => {
-  const { sourcePath, targetDir, newFilename } = req.body;
-
-  if (!sourcePath || !targetDir || !newFilename) {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
-
   try {
-    const fileDoc = await Upload.findOne({ path: sourcePath });
-    if (!fileDoc)
-      return res.status(404).json({ error: "Source file not found" });
+    const { sourcePath, targetDir, newFilename, action } = req.body;
 
-    const sourceFullPath = path.join(__dirname, sourcePath);
-    const targetFullPath = path.join(__dirname, targetDir, newFilename);
+    if (!sourcePath || !targetDir || !newFilename) {
+      return res.status(400).json({ error: "Missing parameters" });
+    }
 
-    await fsPromises.copyFile(sourceFullPath, targetFullPath);
+    const baseUploadPath = path.join(__dirname);
 
-    const targetRelativePath = path
-      .relative(__dirname, targetFullPath)
-      .replace(/\\/g, "/");
+    const fullSourcePath = path.join(baseUploadPath, sourcePath);
+    const fullTargetPath = path.join(baseUploadPath, targetDir, newFilename);
 
-    const newUpload = new Upload({
-      filename: newFilename,
-      path: targetRelativePath,
-      uploaderId: req.user._id,
-      uploadedAt: new Date(),
-      deleted: false,
-    });
+    if (
+      !fullSourcePath.startsWith(baseUploadPath) ||
+      !fullTargetPath.startsWith(baseUploadPath)
+    ) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
-    await newUpload.save();
+    if (action === "copy") {
+      await fs.promises.copyFile(fullSourcePath, fullTargetPath);
 
-    return res.json({ message: "File pasted successfully" });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to paste file" });
+      const targetRelativePath = path
+        .relative(baseUploadPath, fullTargetPath)
+        .replace(/\\/g, "/");
+      const newUpload = new Upload({
+        filename: newFilename,
+        path: targetRelativePath,
+        uploaderId: req.user._id,
+        uploadedAt: new Date(),
+        deleted: false,
+      });
+      const saveAction = new LoginHistory({
+        user: req.user._id,
+        action: `คัดลอก ${newFilename} ไป ${targetRelativePath}`,
+        loginAt: new Date(),
+      });
+      await saveAction.save();
+      await newUpload.save();
+    } else if (action === "cut") {
+      await fs.promises.rename(fullSourcePath, fullTargetPath);
+      const sourceRelativePath = path
+        .relative(baseUploadPath, fullSourcePath)
+        .replace(/\\/g, "/");
+      const targetRelativePath = path
+        .relative(baseUploadPath, fullTargetPath)
+        .replace(/\\/g, "/");
+      const updated = await Upload.findOneAndUpdate(
+        { path: sourceRelativePath },
+        { $set: { path: targetRelativePath, filename: newFilename } }
+      );
+      if (!updated) {
+        return res.status(404).json({ error: "Source file record not found" });
+      }
+      const saveAction = new LoginHistory({
+        user: req.user._id,
+        action: `ย้าย ${newFilename} ไป ${targetRelativePath}`,
+        loginAt: new Date(),
+      });
+      await saveAction.save();
+    } else {
+      return res.status(400).json({ error: "Invalid action" });
+    }
+
+    res.status(200).json({ message: `${action} successful` });
+  } catch (error) {
+    console.error("Paste error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+app.post("/cut", authMiddleware, async (req, res) => {
+  try {
+    let { sourcePath, targetFilename } = req.body;
 
+    if (!sourcePath || !targetFilename) {
+      return res
+        .status(400)
+        .json({ error: "Missing sourcePath or targetFilename" });
+    }
+
+    const baseUploadPath = path.join(__dirname, "uploads");
+
+    const fullSourcePath = path.join(baseUploadPath, sourcePath);
+    const fullTargetPath = path.join(baseUploadPath, targetFilename);
+
+    if (
+      !fullSourcePath.startsWith(baseUploadPath) ||
+      !fullTargetPath.startsWith(baseUploadPath)
+    ) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    try {
+      await fs.access(fullSourcePath);
+    } catch {
+      return res.status(404).json({ error: "Source file not found" });
+    }
+
+    await fs.rename(fullSourcePath, fullTargetPath);
+
+    return res.status(200).json({ message: "File moved successfully" });
+  } catch (error) {
+    console.error("Cut file error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 app.post("/fetch-email", authMiddleware, async (req, res) => {
   let department;
   const { startDate, endDate, folders } = req.body;
@@ -501,7 +572,12 @@ app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
       uploadedAt: new Date(),
       deleted: false,
     });
-
+    const saveAction = new LoginHistory({
+      user: req.user._id,
+      action: `อัพโหลด ${relativePath} - ${filename}`,
+      loginAt: new Date(),
+    });
+    await saveAction.save();
     await newUpload.save();
 
     res.status(200).json({ message: "Upload complete" });
@@ -542,7 +618,6 @@ app.post("/rename", authMiddleware, async (req, res) => {
       .relative(__dirname, newFullPath)
       .replace(/\\/g, "/");
 
-    // อัปเดตใน MongoDB
     fileDoc.filename = newFilename;
     fileDoc.path = newRelativePath;
     await fileDoc.save();
@@ -563,7 +638,6 @@ app.delete("/delete", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "No path specified" });
     }
 
-    // **แก้ตรงนี้**: ค้นหาใน DB ด้วย targetPath ตรง ๆ (สมมติ DB เก็บ relative path)
     const fileDoc = await Upload.findOne({ path: targetPath });
 
     if (!fileDoc) {
@@ -578,7 +652,12 @@ app.delete("/delete", authMiddleware, async (req, res) => {
     ) {
       return res.status(403).json({ error: "Permission denied" });
     }
-
+    const saveAction = new LoginHistory({
+      user: req.user._id,
+      action: `ลบ ${targetPath}`,
+      loginAt: new Date(),
+    });
+    await saveAction.save();
     await Upload.updateOne(
       { _id: fileDoc._id },
       {
@@ -746,6 +825,12 @@ app.post("/create-folder", authMiddleware, async (req, res) => {
 
     await fs.promises.mkdir(fullPath, { recursive: true });
 
+    const saveAction = new LoginHistory({
+      user: req.user._id,
+      action: `สร้างโฟลเดอร์ ${folderName}`,
+      loginAt: new Date(),
+    });
+    await saveAction.save();
     await Upload.create({
       filename: folderName,
       path: relativePath, // ✅ บันทึกเป็น relative path
@@ -811,6 +896,8 @@ async function fetchGAReport(granularity = "daily") {
     throw error;
   }
 }
+
+app.get("/logs", getLoginHistory);
 
 app.get("/ga4-report", async (req, res) => {
   const granularity = req.query.granularity || "daily";

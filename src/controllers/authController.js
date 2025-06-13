@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
+const LoginHistory = require("../models/loginHistoryModel");
 
 const getTokenFromHeader = (req) => {
   const authHeader = req.headers.authorization;
@@ -103,8 +104,15 @@ exports.login = async (req, res) => {
         role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "24h" }
     );
+
+    const saveAction = new LoginHistory({
+      user: user._id,
+      action: "login",
+      loginAt: new Date(),
+    });
+    await saveAction.save();
 
     res.status(200).json({
       status: "success",
