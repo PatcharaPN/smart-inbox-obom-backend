@@ -67,7 +67,7 @@ let cacheGAData = null;
 app.use(cookieParser());
 const uploadPath = path.join(__dirname, "uploads");
 
-const baseUploadPath = path.join(__dirname, "uploads");
+const baseUploadPath = path.join(__dirname);
 
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath);
@@ -859,9 +859,34 @@ app.get("/ga4-engagement", async (req, res) => {
   }
 });
 app.get("/file", (req, res) => {
-  const filePath = req.query.path;
+  let filePath = req.query.path;
+  console.log("Incoming filePath:", filePath);
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing file path" });
+  }
+
+  // ลบ uploads/ ถ้า user ส่งมาซ้ำ
+  if (filePath.startsWith("uploads/")) {
+    filePath = filePath.replace(/^uploads\//, "");
+  }
+
   const fullFilePath = path.join(baseUploadPath, filePath);
-  res.sendFile(fullFilePath);
+  console.log("Resolved fullFilePath:", fullFilePath);
+
+  // ป้องกันการเข้าถึง path ที่ผิด เช่น ../
+  if (!fullFilePath.startsWith(baseUploadPath)) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  fs.stat(fullFilePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      console.error("File not found:", fullFilePath);
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    res.sendFile(fullFilePath);
+  });
 });
 
 app.post("/email-accounts", authMiddleware, async (req, res) => {
