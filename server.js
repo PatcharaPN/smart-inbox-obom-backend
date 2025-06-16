@@ -30,7 +30,7 @@ const EmailAccountModel = require("./src/models/emailAccounts");
 const { startSocketServer } = require("./src/configs/socketio");
 const { getLoginHistory } = require("./src/controllers/loginHistoryController");
 const LoginHistory = require("./src/models/loginHistoryModel");
-
+dotenv.config();
 app.use(
   cors({
     origin: [
@@ -65,7 +65,7 @@ startSocketServer(server);
 //   })
 // );
 require("./src/configs/swagger")(app);
-let cacheGAData = null;
+
 app.use(cookieParser());
 const uploadPath = path.join(__dirname, "uploads");
 
@@ -107,7 +107,6 @@ app.get("/", (req, res) => {
   res.send("📨 Email Service API is running");
 });
 
-dotenv.config();
 app.use("/attachments", express.static(path.join(__dirname, "attachments")));
 
 /**

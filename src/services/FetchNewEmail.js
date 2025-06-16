@@ -184,7 +184,7 @@ const fetchNewEmails = async ({ userId, department }) => {
                               // ✅ Save the file
                               const relativePath = path
                                 .join(
-                                  "Purchase",
+                                  department,
                                   folderName,
                                   subfolder,
                                   filename

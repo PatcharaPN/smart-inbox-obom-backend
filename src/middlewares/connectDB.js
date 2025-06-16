@@ -1,9 +1,10 @@
 const mongoose = require("mongoose");
-
+const dotenv = require("dotenv");
+dotenv.config();
 const connectDB = async () => {
   try {
     mongoose
-      .connect("mongodb://100.127.64.22:27017/aio-obom", {
+      .connect(process.env.MONGO_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true,
       })

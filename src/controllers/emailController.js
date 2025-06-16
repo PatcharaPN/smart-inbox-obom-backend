@@ -134,6 +134,10 @@ exports.FetchEmail = async (req, res) => {
   }
 
   try {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
     const userObjectId = new mongoose.Types.ObjectId(userId);
     const filter = { user: userObjectId };
 
