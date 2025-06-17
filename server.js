@@ -34,6 +34,7 @@ dotenv.config();
 app.use(
   cors({
     origin: [
+      "https://try.responsiveviewer.org",
       "http://database.obomgauge.com",
       "http://db.obomgauge.com",
       "http://localhost:5173",
@@ -88,9 +89,13 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    cb(null, file.originalname);
+    // แปลงชื่อไฟล์จาก latin1 เป็น utf8
+    const originalnameBuffer = Buffer.from(file.originalname, "latin1");
+    const originalnameUtf8 = originalnameBuffer.toString("utf8");
+    cb(null, originalnameUtf8);
   },
 });
+
 const upload = multer({ storage });
 // const job = new CronJob("0 8 * * *", () => {
 //   fetchNewEmails();
@@ -123,6 +128,7 @@ app.post("/fetch-new", authMiddleware, async (req, res) => {
   const { folders } = req.body;
   const userId = req.user._id;
   const department = req.user.role;
+  console.log(department);
 
   if (!userId) {
     return res.status(400).json({
@@ -400,13 +406,14 @@ app.get("/explorer", authMiddleware, async (req, res) => {
     const allResults = [];
 
     for (const requestedPath of requestedPaths) {
+      // ใช้ path.join ธรรมดาแทน path.posix.join
       const fullPath = path.join(__dirname, requestedPath);
       const files = await fs.promises.readdir(fullPath, {
         withFileTypes: true,
       });
 
       const filePaths = files.map((file) =>
-        path.posix.join(requestedPath, file.name)
+        path.join(requestedPath, file.name)
       );
 
       const uploads = await Upload.find({
@@ -425,7 +432,7 @@ app.get("/explorer", authMiddleware, async (req, res) => {
       const userMap = new Map(users.map((u) => [u._id.toString(), u.username]));
 
       for (const file of files) {
-        const filePath = path.posix.join(requestedPath, file.name);
+        const filePath = path.join(requestedPath, file.name);
         const stat = await fs.promises.stat(path.join(fullPath, file.name));
 
         let uploader = null;
@@ -451,6 +458,7 @@ app.get("/explorer", authMiddleware, async (req, res) => {
       }
     }
 
+    res.setHeader("Content-Type", "application/json; charset=utf-8"); // ตั้ง charset ให้ response
     res.json(allResults);
   } catch (error) {
     console.error("❌ Error reading directories:", error);
@@ -555,32 +563,27 @@ app.get("/recent-files", async (req, res) => {
 // });
 
 app.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
-  const uploaderId = req.user._id;
-  const filename = req.file.filename;
+  console.log("Original filename:", req.file.originalname);
+  console.log("Saved file path:", req.file.path);
 
-  // เก็บ path แบบ relative เช่น "Uploads/xxx.txt"
   const relativePath = path
     .relative(__dirname, req.file.path)
     .replace(/\\/g, "/");
 
   try {
     const newUpload = new Upload({
-      filename,
-      path: relativePath, // ✅ ไม่ใช้ req.file.path ตรงๆ
-      uploaderId,
+      filename: req.file.originalname, // เก็บชื่อจริงๆ ไม่ใช่แปลงอะไร
+      path: relativePath,
+      uploaderId: req.user._id,
       uploadedAt: new Date(),
       deleted: false,
     });
-    const saveAction = new LoginHistory({
-      user: req.user._id,
-      action: `อัพโหลด ${relativePath} - ${filename}`,
-      loginAt: new Date(),
-    });
-    await saveAction.save();
+
     await newUpload.save();
 
     res.status(200).json({ message: "Upload complete" });
   } catch (error) {
+    console.error(error);
     res
       .status(500)
       .json({ error: "Error uploading file", details: error.message });
