@@ -26,6 +26,7 @@ router.get("/users", authController.getUsers);
 router.post("/register", authController.register);
 router.get("/me", authController.getUserProfile);
 router.get("/user/:id", authController.getUserById);
+router.put("/user/edit", authController.updateEmailAndPassword);
 router.put("/me/edit", authController.editUserByCredential);
 router.put(
   "/upload-profile-pic",

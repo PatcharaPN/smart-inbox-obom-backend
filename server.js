@@ -654,22 +654,6 @@ app.delete("/delete", authMiddleware, async (req, res) => {
     ) {
       return res.status(403).json({ error: "Permission denied" });
     }
-    const saveAction = new LoginHistory({
-      user: req.user._id,
-      action: `ลบ ${targetPath}`,
-      loginAt: new Date(),
-    });
-    await saveAction.save();
-    await Upload.updateOne(
-      { _id: fileDoc._id },
-      {
-        $set: {
-          deleted: true,
-          deletedAt: new Date(),
-          deletedBy: req.user._id,
-        },
-      }
-    );
 
     // sanitize path ก่อนลบไฟล์จริง
     if (targetPath.startsWith("Uploads/")) {
@@ -687,11 +671,35 @@ app.delete("/delete", authMiddleware, async (req, res) => {
 
     if (stats.isDirectory()) {
       await fsPromises.rm(fullPath, { recursive: true, force: true });
-      return res.json({ message: "Folder deleted successfully" });
     } else {
       await fsPromises.unlink(fullPath);
-      return res.json({ message: "File deleted successfully" });
     }
+
+    // ถ้าลบไฟล์สำเร็จ ค่อยอัปเดตในฐานข้อมูล
+    await Upload.updateOne(
+      { _id: fileDoc._id },
+      {
+        $set: {
+          deleted: true,
+          deletedAt: new Date(),
+          deletedBy: req.user._id,
+        },
+      }
+    );
+
+    // บันทึกประวัติ
+    const saveAction = new LoginHistory({
+      user: req.user._id,
+      action: `ลบ ${req.query.path}`,
+      loginAt: new Date(),
+    });
+    await saveAction.save();
+
+    return res.json({
+      message: stats.isDirectory()
+        ? "Folder deleted successfully"
+        : "File deleted successfully",
+    });
   } catch (err) {
     if (err.code === "ENOENT") {
       return res.status(404).json({ error: "File or folder not found" });
