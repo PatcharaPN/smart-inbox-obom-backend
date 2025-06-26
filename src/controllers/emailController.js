@@ -1,6 +1,7 @@
 const { default: mongoose } = require("mongoose");
 const EmailModel = require("../models/emailModel");
 const Email = require("../models/emailModel");
+const emailAccounts = require("../models/emailAccounts");
 exports.FetchEmails = async (req, res) => {
   try {
     const emails = await Email.find();
@@ -260,3 +261,23 @@ exports.FetchEmail = async (req, res) => {
 //     });
 //   }
 // };
+
+exports.CheckIMAP = async (req, res) => {
+  // รับ ID จาก req
+  const userId = req.user._id;
+
+  // เช็ค ว่า User มี IMAP ไหม
+  try {
+    const hasIMAP = await emailAccounts.exists({ user: userId });
+    // ถ้ามี ส่ง hasIMAP true ไม่มีส่ง false
+    if (hasIMAP) {
+      return res.status(200).json({
+        hasIMAP: !!hasIMAP,
+      });
+    }
+  } catch (error) {
+    // ถ้า catch error ได้ ให้ส่ง Server Error พร้อม status 500
+    console.error("CheckIMAP error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};

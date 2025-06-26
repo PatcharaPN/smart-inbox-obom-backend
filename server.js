@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const emailService = require("./src/services/emailService"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
+const emailRoutes = require("./src/routes/EmailRoute");
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
 const authMiddleware = require("./src/middlewares/authMiddleWare");
@@ -65,7 +66,6 @@ startSocketServer(server);
 //     credentials: true,
 //   })
 // );
-require("./src/configs/swagger")(app);
 
 app.use(cookieParser());
 const uploadPath = path.join(__dirname, "uploads");
@@ -105,24 +105,18 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
 // Upload PDF
-
+app.use("/emails", emailRoutes);
 app.use("/auth", authRoutes);
+
+app.get("/api/connectionCheck", (req, res) => {
+  res.status(200).send("OK");
+});
 
 app.get("/", (req, res) => {
   res.send("📨 Email Service API is running");
 });
 
 app.use("/attachments", express.static(path.join(__dirname, "attachments")));
-
-/**
- * @swagger
- * /fetch-email:
- *   post:
- *     summary: Get all Emails
- *     responses:
- *       200:
- *         description: A list of Emails
- */
 
 app.post("/fetch-new", authMiddleware, async (req, res) => {
   const { folders } = req.body;
@@ -350,37 +344,11 @@ app.post("/fetch-email", authMiddleware, async (req, res) => {
 });
 app.get("/ram-usage", getDiskUsage.getRamUsage);
 app.get("/disk-usage", getDiskUsage.getDiskUsage);
-/**
- * @swagger
- * /emails:
- *   get:
- *     summary: Get all Emails
- *     responses:
- *       200:
- *         description: A list of Emails
- */
+
 app.get("/emails", FetchEmail);
 
-/**
- * @swagger
- * /fetch-emails:
- *   get:
- *     summary: Get all Emails
- *     responses:
- *       200:
- *         description: A list of Emails
- */
 app.get("/fetch-emails", FetchEmails);
 
-/**
- * @swagger
- * /list:
- *   get:
- *     summary: Get all Folder
- *     responses:
- *       200:
- *         description: A list of Emails
- */
 const BASE_DIR = path.join(__dirname, "uploads");
 
 const getFileCategory = (filename) => {
