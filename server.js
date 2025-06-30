@@ -3,6 +3,7 @@ const multer = require("multer");
 const emailService = require("./src/services/emailService"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const emailRoutes = require("./src/routes/EmailRoute");
+const jobRoutes = require("./src/routes/JobRoute");
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
 const authMiddleware = require("./src/middlewares/authMiddleWare");
@@ -39,6 +40,7 @@ app.use(
       "http://database.obomgauge.com",
       "http://db.obomgauge.com",
       "http://localhost:5173",
+      "http://localhost:5174",
       "http://100.127.64.22",
     ],
     methods: ["GET", "DELETE", "POST", "PUT"],
@@ -101,13 +103,14 @@ const upload = multer({ storage });
 //   fetchNewEmails();
 // });
 // job.start();
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 
 // Upload PDF
 app.use("/emails", emailRoutes);
 app.use("/auth", authRoutes);
-
+app.use("/job", jobRoutes);
 app.get("/api/connectionCheck", (req, res) => {
   res.status(200).send("OK");
 });
