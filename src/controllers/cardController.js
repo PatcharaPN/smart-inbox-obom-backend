@@ -30,7 +30,20 @@ function getDimensions(cardType) {
     bgPath: path.join(__dirname, "../assets/Horizontal.png"),
   };
 }
-
+const generateBackSideCard = (doc, dims, cardType) => {
+  const { width, height } = dims;
+  if (cardType === "vertical") {
+    doc.image(path.join(__dirname, "../assets/Vertical_Back.png"), 0, 0, {
+      width,
+      height,
+    });
+  } else {
+    doc.image(path.join(__dirname, "../assets/Horizontal_Back.png"), 0, 0, {
+      width,
+      height,
+    });
+  }
+};
 function drawEmployeeCard(doc, data, dims, photoPath, cardType = "horizontal") {
   const { width, height, radius, bgPath } = dims;
   const { firstName, lastName, employeeId, department, nickname, note } = data;
@@ -116,7 +129,8 @@ exports.createCard = async (req, res) => {
     }
 
     const dims = getDimensions(cardType);
-
+    const gapBetweenCards = (10 * 72) / 25.4;
+    const combinedHeight = dims.height * 2 + gapBetweenCards;
     // แปลงรูปภาพด้วย sharp
     const outputPath = path.join(os.tmpdir(), `processed-${Date.now()}.png`);
     await sharp(req.file.path)
@@ -157,7 +171,10 @@ exports.createCard = async (req, res) => {
     await newCard.save();
 
     // สร้าง PDF
-    const doc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 });
+    const doc = new PDFDocument({
+      size: [dims.width, combinedHeight],
+      margin: 1,
+    });
     doc.registerFont("S", fontPath);
     const pdfFilename = `EmployeeCard-${employeeId}.pdf`;
 
@@ -175,7 +192,15 @@ exports.createCard = async (req, res) => {
       finalPath,
       cardType
     );
+    const backImgPath =
+      cardType === "vertical"
+        ? path.join(__dirname, "../assets/Vertical_Back.png")
+        : path.join(__dirname, "../assets/Horizontal_Back.png");
 
+    doc.image(backImgPath, 0, dims.height + gapBetweenCards, {
+      width: dims.width,
+      height: dims.height,
+    });
     doc.end();
 
     // ลบไฟล์ชั่วคราว
@@ -214,9 +239,14 @@ exports.generateCardByUID = async (req, res) => {
         .json({ success: false, message: "ไม่พบบัตรพนักงาน" });
     }
     const dims = getDimensions(cardtype);
+    const gapBetweenCards = (10 * 72) / 25.4;
+    const combinedHeight = dims.height * 2 + gapBetweenCards;
     const imagePath = path.join(__dirname, "../../", card.imagePath);
 
-    const doc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 });
+    const doc = new PDFDocument({
+      size: [dims.width, combinedHeight],
+      margin: 1,
+    });
     doc.registerFont("S", fontPath);
     const pdfFilename = `EmployeeCard-${card.employeeId}.pdf`;
     res.setHeader(
@@ -239,6 +269,16 @@ exports.generateCardByUID = async (req, res) => {
       imagePath,
       cardtype
     );
+    const backImgPath =
+      cardtype === "vertical"
+        ? path.join(__dirname, "../assets/Vertical_Back.png")
+        : path.join(__dirname, "../assets/Horizontal_Back.png");
+
+    doc.image(backImgPath, 0, dims.height + gapBetweenCards, {
+      width: dims.width,
+      height: dims.height,
+    });
+
     doc.end();
   } catch (error) {
     console.error("Error generating card by UID:", error);
