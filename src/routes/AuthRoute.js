@@ -4,22 +4,7 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = "./uploads/profilePics";
-
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
-});
-
-const upload = multer({ storage });
+const upload = require("../middlewares/uploadMiddleWare");
 
 router.post("/login", authController.login);
 router.get("/users", authController.getUsers);

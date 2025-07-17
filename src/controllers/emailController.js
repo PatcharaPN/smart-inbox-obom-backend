@@ -2,6 +2,7 @@ const { default: mongoose } = require("mongoose");
 const EmailModel = require("../models/emailModel");
 const Email = require("../models/emailModel");
 const emailAccounts = require("../models/emailAccounts");
+const fetchNewEmails = require("../services/FetchNewEmail");
 exports.FetchEmails = async (req, res) => {
   try {
     const emails = await Email.find();
@@ -279,5 +280,36 @@ exports.CheckIMAP = async (req, res) => {
     // ถ้า catch error ได้ ให้ส่ง Server Error พร้อม status 500
     console.error("CheckIMAP error:", error);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.autoFetchEmails = async (req, res) => {
+  try {
+    const accounts = await emailAccounts.find({});
+
+    for (const account of accounts) {
+      try {
+        await fetchNewEmails({
+          userId: account.user,
+          department: account.folder,
+          folders: ["INBOX", "Sent", "Trash"],
+        });
+
+        console.log(`✅ Synced emails for user ${account.user}`);
+      } catch (err) {
+        console.error(`❌ Failed to sync user ${account.user}:`, err.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "📬 Finished syncing all email accounts.",
+    });
+  } catch (err) {
+    console.error("❌ Failed to fetch EmailAccounts:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดในการดึงบัญชีอีเมล",
+    });
   }
 };

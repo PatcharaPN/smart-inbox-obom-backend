@@ -1,5 +1,5 @@
-const Application = require("../models/JobApplyModel"); // path อาจต้องแก้ตามโครงสร้างจริง
-
+const Application = require("../models/JobApplyModel");
+const Notification = require("../models/notificationModel");
 exports.submitApplication = async (req, res) => {
   try {
     const {
@@ -27,7 +27,7 @@ exports.submitApplication = async (req, res) => {
     if (req.file) {
       attachment = {
         fileName: req.file.originalname,
-        fileUrl: `/uploads/applicant_attachments/${req.file.filename}`,
+        fileUrl: `/attachments/applicant_attachments/${req.file.filename}`,
         fileType: req.file.mimetype,
         fileSize: req.file.size,
       };
@@ -63,6 +63,19 @@ exports.submitApplication = async (req, res) => {
 
     await newApplication.save();
 
+    const notification = new Notification({
+      userId: null,
+      department: "hr",
+      type: "system",
+      notitype: "applicant",
+      message: `ใบสมัครงานใหม่จาก ${firstName} ${lastName}`,
+      describtion: [
+        `ตำแหน่งที่สมัคร: ${applyPosition}`,
+        `สถานะปัจจุบัน: ${status}`,
+      ],
+    });
+
+    await notification.save();
     res
       .status(201)
       .json({ message: "ส่งใบสมัครเรียบร้อย", data: newApplication });

@@ -9,6 +9,7 @@ const getInbox = require("./src/services/checkMail");
 const authMiddleware = require("./src/middlewares/authMiddleWare");
 const connectDB = require("./src/middlewares/connectDB");
 const fetchNewEmails = require("./src/services/FetchNewEmail");
+const axios = require("axios");
 const app = express();
 const User = require("./src/models/userModel");
 const cookieParser = require("cookie-parser");
@@ -17,17 +18,19 @@ const path = require("path");
 const { google } = require("googleapis");
 const cors = require("cors");
 const PORT = 3000;
-const { CronJob } = require("cron");
 const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const Upload = require("./src/models/uploadModel");
 const FetchNewEmails = require("./src/services/FetchNewEmail");
+const notificationRoutes = require("./src/routes/NotificationRoute");
 const http = require("http");
+const cron = require("node-cron");
 const {
   FetchEmails,
   FetchEmail,
 } = require("./src/controllers/emailController");
 const EmailModel = require("./src/models/emailModel");
+const employeeCardRoutes = require("./src/routes/CardRoute");
 const EmailAccountModel = require("./src/models/emailAccounts");
 const { startSocketServer } = require("./src/configs/socketio");
 const { getLoginHistory } = require("./src/controllers/loginHistoryController");
@@ -42,6 +45,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:5174",
       "http://100.127.64.22",
+      "https://obomgauge.com",
     ],
     methods: ["GET", "DELETE", "POST", "PUT"],
     credentials: true,
@@ -103,14 +107,15 @@ const upload = multer({ storage });
 //   fetchNewEmails();
 // });
 // job.start();
-
+app.use("/photos", express.static(path.join(__dirname, "public/photos")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
-
+app.use("/employee-card", employeeCardRoutes);
+app.use("/api", notificationRoutes);
 // Upload PDF
 app.use("/emails", emailRoutes);
 app.use("/auth", authRoutes);
-app.use("/job", jobRoutes);
+app.use("/api/job", jobRoutes);
 app.get("/api/connectionCheck", (req, res) => {
   res.status(200).send("OK");
 });
@@ -121,6 +126,17 @@ app.get("/", (req, res) => {
 
 app.use("/attachments", express.static(path.join(__dirname, "attachments")));
 
+cron.schedule("*/10 * * * *", async () => {
+  console.log("⏰ Running auto email sync at", new Date().toLocaleString());
+  try {
+    const response = await axios.post(
+      "http://100.127.64.22:3000/emails/sync/all-emails"
+    );
+    console.log("✅ Auto sync result:", response.data.message);
+  } catch (error) {
+    console.error("❌ Auto sync failed:", error.message || error);
+  }
+});
 app.post("/fetch-new", authMiddleware, async (req, res) => {
   const { folders } = req.body;
   const userId = req.user._id;

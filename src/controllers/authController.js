@@ -212,14 +212,18 @@ exports.getUser = async (req, res) => {
 exports.getUserProfile = async (req, res) => {
   try {
     const token = getTokenFromHeader(req);
-    if (!token)
-      return res.status(401).json({
-        message: "No token Provided",
-      });
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
+    }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtErr) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
     const userId = decoded.id;
-
     const user = await User.findById(userId);
     if (!user) {
       return res
@@ -230,9 +234,11 @@ exports.getUserProfile = async (req, res) => {
     const userData = user.toObject();
     delete userData.password;
 
-    res.status(200).json({ status: "success", data: { user: userData } });
+    return res
+      .status(200)
+      .json({ status: "success", data: { user: userData } });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
       message: "Error retrieving user",
       error: error.message,
