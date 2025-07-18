@@ -18,5 +18,6 @@ router.put(
   upload.single("profilePic"),
   authController.uploadProfilePic
 );
+router.put("/updatepassword", authController.changePasswordByAdmin);
 
 module.exports = router;

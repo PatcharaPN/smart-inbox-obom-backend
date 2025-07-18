@@ -405,3 +405,34 @@ exports.getUsers = async (req, res) => {
     });
   }
 };
+
+exports.changePasswordByAdmin = async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({
+        message: "userId และ newPassword ต้องถูกส่งมาด้วย",
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.status(200).json({
+      status: "success",
+      message: "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน",
+      error: error.message,
+    });
+  }
+};

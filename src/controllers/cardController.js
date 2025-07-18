@@ -228,6 +228,21 @@ exports.getAllCards = async (req, res) => {
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
   }
 };
+exports.getEmployeeCardById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const card = await EmployeeCard.findById(id);
+    if (!card) {
+      return res
+        .status(404)
+        .json({ success: false, message: "ไม่พบบัตรพนักงาน" });
+    }
+    res.status(200).json({ success: true, data: card });
+  } catch (error) {
+    console.error("Error fetching employee card:", error);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+};
 exports.generateCardByUID = async (req, res) => {
   try {
     const cardtype = req.query.orientation || "horizontal";
@@ -296,7 +311,6 @@ exports.deleteEmployeeCardById = async (req, res) => {
         .status(404)
         .json({ success: false, message: "ไม่พบบัตรพนักงาน" });
     }
-
     const imagePath = path.join(__dirname, "../../", card.imagePath);
     try {
       await fsPromises.unlink(imagePath);
@@ -307,6 +321,73 @@ exports.deleteEmployeeCardById = async (req, res) => {
     res.status(200).json({ success: true, message: "ลบบัตรพนักงานสำเร็จ" });
   } catch (error) {
     console.error("Error deleting employee card:", error);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+};
+
+exports.updateEmployeeCard = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      firstName,
+      lastName,
+      employeeId,
+      department,
+      employeeType,
+      cardType = "horizontal",
+      nickname,
+      note,
+    } = req.body;
+
+    const card = await EmployeeCard.findById(id);
+    if (!card) {
+      return res
+        .status(404)
+        .json({ success: false, message: "ไม่พบบัตรพนักงาน" });
+    }
+
+    if (req.file) {
+      const outputPath = path.join(os.tmpdir(), `processed-${Date.now()}.png`);
+      await sharp(req.file.path)
+        .resize({
+          width: 300,
+          height: 300,
+          fit: "cover",
+          position: "center",
+          withoutEnlargement: true,
+        })
+        .modulate({ saturation: 1.3 })
+        .png({
+          compressionLevel: 0,
+          quality: 100,
+          adaptiveFiltering: false,
+        })
+        .toFile(outputPath);
+
+      const finalFilename = `${employeeId}-${Date.now()}.png`;
+      const finalPath = path.join(
+        __dirname,
+        "../../uploads/employees",
+        finalFilename
+      );
+      await fs.promises.rename(outputPath, finalPath);
+      card.imagePath = `uploads/employees/${finalFilename}`;
+    }
+
+    card.firstName = firstName;
+    card.lastName = lastName;
+    card.employeeId = employeeId;
+    card.department = department;
+    card.employeeType = employeeType;
+    card.cardType = cardType;
+    card.nickname = nickname;
+    card.note = note;
+
+    await card.save();
+
+    res.status(200).json({ success: true, data: card });
+  } catch (error) {
+    console.error("Error updating employee card:", error);
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
   }
 };

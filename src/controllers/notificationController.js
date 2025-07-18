@@ -1,6 +1,6 @@
 const Notification = require("../models/notificationModel");
 
-const getNotifications = async (req, res) => {
+exports.getNotifications = async (req, res) => {
   try {
     const role = req.user?.role || "";
 
@@ -21,4 +21,38 @@ const getNotifications = async (req, res) => {
   }
 };
 
-module.exports = { getNotifications };
+exports.pushNotification = async (req, res) => {
+  try {
+    const {
+      role,
+      type,
+      notitype = "",
+      iconUrl = "",
+      message,
+      describtion = [],
+      timestamp = new Date(),
+    } = req.body;
+
+    if (!message || !type || !role) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ข้อมูลไม่ครบถ้วน" });
+    }
+
+    const notification = new Notification({
+      role,
+      type,
+      notitype,
+      iconUrl,
+      message,
+      describtion,
+      timestamp,
+    });
+
+    await notification.save();
+    res.status(201).json({ success: true, data: notification });
+  } catch (error) {
+    console.error("Push notification error:", error);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+};

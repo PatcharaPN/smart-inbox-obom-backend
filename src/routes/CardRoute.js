@@ -24,5 +24,12 @@ const upload = multer({ storage });
 router.post("/pdf", upload.single("photo"), cardController.createCard);
 router.get("/cards", cardController.getAllCards);
 router.get("/generate-pdf/:id", cardController.generateCardByUID);
+router.get("/card/:id", cardController.getEmployeeCardById);
+router.put(
+  "/edit/:id",
+  upload.single("photo"),
+  cardController.updateEmployeeCard
+);
+router.get("/card/:id", cardController.getEmployeeCardById);
 router.delete("/delete/:id", cardController.deleteEmployeeCardById);
 module.exports = router;
