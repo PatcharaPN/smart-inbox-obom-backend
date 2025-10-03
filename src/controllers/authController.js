@@ -436,3 +436,22 @@ exports.changePasswordByAdmin = async (req, res) => {
     });
   }
 };
+
+exports.getSaleRole = async (req, res) => {
+  try {
+    const sales = await User.find({ role: "sale" });
+
+    res.status(200).json({
+      success: true,
+      users: sales,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "ไม่สามารถดึงข้อมูลผู้ใช้ได้",
+      error: error.message,
+    });
+  }
+};
+

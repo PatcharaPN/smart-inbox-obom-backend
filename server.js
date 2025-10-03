@@ -4,6 +4,7 @@ const emailService = require("./src/services/emailService"); // โมเดล�
 const authRoutes = require("./src/routes/AuthRoute"); // โมเดลที่สร้างไว้ก่อนหน้านี้
 const emailRoutes = require("./src/routes/EmailRoute");
 const jobRoutes = require("./src/routes/JobRoute");
+const taskRoutes = require("./src/routes/TaskRoute");
 const getDiskUsage = require("./src/controllers/diskUsageController");
 const getInbox = require("./src/services/checkMail");
 const authMiddleware = require("./src/middlewares/authMiddleWare");
@@ -39,13 +40,17 @@ dotenv.config();
 app.use(
   cors({
     origin: [
-      "https://try.responsiveviewer.org",
-      "http://database.obomgauge.com",
-      "http://db.obomgauge.com",
+      // "https://try.responsiveviewer.org",
+      // "https://obom-server.tail7f9ceb.ts.net/",
+      // "http://db.obomgauge.com",
+      // "http://localhost:5173",
+      // "http://localhost:5174",
+      // "http://100.127.64.22",
+      // "http://localhost:5173",
       "http://localhost:5173",
-      "http://localhost:5174",
-      "http://100.127.64.22",
-      "https://obomgauge.com",
+      // "https://obomgauge.com",
+      // "https://one.obomgauge.com",
+      // "http://one.obomgauge.com",
     ],
     methods: ["GET", "DELETE", "POST", "PUT"],
     credentials: true,
@@ -102,21 +107,30 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024,
+  },
+});
+
 // const job = new CronJob("0 8 * * *", () => {
 //   fetchNewEmails();
 // });
 // job.start();
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/photos", express.static(path.join(__dirname, "public/photos")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
 app.use("/employee-card", employeeCardRoutes);
 app.use("/api", notificationRoutes);
+app.use("/task", taskRoutes);
 // Upload PDF
 app.use("/emails", emailRoutes);
 app.use("/auth", authRoutes);
 app.use("/api/job", jobRoutes);
-app.get("/api/connectionCheck", (req, res) => {
+app.get("/connectionCheck", (req, res) => {
   res.status(200).send("OK");
 });
 

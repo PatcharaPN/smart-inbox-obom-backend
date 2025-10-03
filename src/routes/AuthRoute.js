@@ -18,6 +18,7 @@ router.put(
   upload.single("profilePic"),
   authController.uploadProfilePic
 );
+router.get("/sale", authController.getSaleRole);
 router.put("/updatepassword", authController.changePasswordByAdmin);
 
 module.exports = router;
